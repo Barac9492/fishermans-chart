@@ -2264,10 +2264,10 @@ function updateNetFx(dt) {
       c.splashed = true;
       splashAt(c.toX, c.toZ);
       netGroup.position.y = 0.05;
-    } else if (c.t < 2.3) { // 가라앉아 기다린다
+    } else if (c.t < 1.9) { // 가라앉아 기다린다
       netGroup.position.y = Math.max(-0.3, netGroup.position.y - dt * 0.5);
-    } else if (c.t < 3.3) { // 끌어올린다
-      const k = (c.t - 2.3) / 1;
+    } else if (c.t < 2.9) { // 끌어올린다
+      const k = (c.t - 1.9) / 1;
       netGroup.position.set(c.toX + (c.fromX - c.toX) * k, 0.2 + k * 0.8, c.toZ + (c.fromZ - c.toZ) * k);
       netGroup.scale.setScalar(1.4 - k * 0.9);
       if (!c.empty && !c.burst) {
@@ -2319,28 +2319,87 @@ function updateNetFx(dt) {
 // ---- 흐름 정의: id → { label(), advance(marker) } ----
 const flows = {};
 
+// 1번 마지막 던지기: 말씀 그대로 "깊은 데로 가서" — 물가의 배에 올라
+// 깊은 물로 저어 나가, 거기서 그물을 내리고, 만선으로 돌아온다 (눅 5:4)
+let netsRide = null;
+const NETS_MOOR = { x: -33, z: -122, rot: -0.6 }; // shoreBoat의 정박 자리
+const NETS_DEEP = { x: -16, z: -130 };
+function startNetsRide(marker) {
+  flowBusy = true;
+  state.modal = true;
+  player.visible = false;
+  netsRide = { marker, phase: 'out', t: 0 };
+}
+function updateNetsRide(dt) {
+  const r = netsRide;
+  r.t += dt;
+  if (r.phase === 'out') {
+    const u = Math.min(1, r.t / 3.2);
+    const e = u * u * (3 - 2 * u);
+    const bx = NETS_MOOR.x + (NETS_DEEP.x - NETS_MOOR.x) * e;
+    const bz = NETS_MOOR.z + (NETS_DEEP.z - NETS_MOOR.z) * e;
+    shoreBoat.position.set(bx, Math.sin(r.t * 1.3) * 0.08, bz);
+    shoreBoat.rotation.y = Math.atan2(NETS_DEEP.x - NETS_MOOR.x, NETS_DEEP.z - NETS_MOOR.z);
+    player.position.set(bx, 0, bz);
+    if (u >= 1) {
+      r.phase = 'cast';
+      r.t = 0;
+      toast('여기가 깊은 데다 — 그물을 내린다.');
+      const dir = Math.atan2(0 - bx, -129 - bz);
+      castNet(bx + Math.sin(dir) * 6, bz + Math.cos(dir) * 6, {
+        empty: false,
+        fishN: 22,
+        onDone: () => {
+          toast('그물이 찢어질 만큼 — 배가 잠길 만큼!', 5000);
+          netsRide.phase = 'back';
+          netsRide.t = 0;
+        },
+      });
+    }
+  } else if (r.phase === 'cast') {
+    // 만선의 무게로 배가 기우뚱거린다
+    shoreBoat.rotation.z = Math.sin(r.t * 3.5) * 0.07 * Math.min(1, r.t / 2);
+    shoreBoat.position.y = Math.sin(r.t * 1.3) * 0.08 - Math.min(0.14, r.t * 0.03);
+  } else if (r.phase === 'back') {
+    const u = Math.min(1, r.t / 3);
+    const e = u * u * (3 - 2 * u);
+    const bx = NETS_DEEP.x + (NETS_MOOR.x - NETS_DEEP.x) * e;
+    const bz = NETS_DEEP.z + (NETS_MOOR.z - NETS_DEEP.z) * e;
+    shoreBoat.position.set(bx, Math.sin(r.t * 1.3) * 0.08 - 0.14 * (1 - u), bz);
+    shoreBoat.rotation.y = Math.atan2(NETS_MOOR.x - NETS_DEEP.x, NETS_MOOR.z - NETS_DEEP.z);
+    shoreBoat.rotation.z = Math.sin(r.t * 3.5) * 0.05 * (1 - u);
+    player.position.set(bx, 0, bz);
+    if (u >= 1) {
+      const m = r.marker;
+      netsRide = null;
+      shoreBoat.position.set(NETS_MOOR.x, 0, NETS_MOOR.z);
+      shoreBoat.rotation.set(0, NETS_MOOR.rot, 0);
+      player.visible = true;
+      player.position.set(NETS_MOOR.x + 2, 0, NETS_MOOR.z - 2); // 뭍으로 내려선다
+      flowBusy = false;
+      state.modal = false;
+      openCard(m);
+    }
+  }
+}
+
 flows.nets = {
   step: 0,
-  labels: ['🕸 그물 던지기', '🕸 그물 다시 던지기', '🕸 한 번 더 던지기', '🕸 말씀대로 깊은 데 던지기'],
+  labels: ['🕸 그물 던지기', '🕸 그물 다시 던지기', '🕸 한 번 더 던지기', '⚓ 말씀대로 깊은 데로 저어 가기'],
   label() { return this.labels[this.step]; },
   advance(marker) {
+    if (this.step === 3) { startNetsRide(marker); return; }
     const dir = Math.atan2(0 - player.position.x, -129 - player.position.z); // 호수 한가운데 쪽
-    const deep = this.step === 3;
-    const dist = deep ? 9 : 5;
     const step = this.step;
-    castNet(player.position.x + Math.sin(dir) * dist, player.position.z + Math.cos(dir) * dist, {
-      empty: !deep,
+    castNet(player.position.x + Math.sin(dir) * 5, player.position.z + Math.cos(dir) * 5, {
+      empty: true,
       onDone: () => {
         if (step === 0) toast('…아무것도 걸리지 않았다.');
         else if (step === 1) toast('또 빈 그물이다. 밤새도록 이랬다.');
-        else if (step === 2) toast('"깊은 데로 가서 그물을 내려 고기를 잡아라." (눅 5:4)', 6000);
-        else {
-          toast('그물이 찢어질 만큼 — 배가 잠길 만큼!');
-          setTimeout(() => openCard(marker), 1800);
-        }
+        else toast('"깊은 데로 가서 그물을 내려 고기를 잡아라." (눅 5:4)', 6000);
       },
     });
-    if (this.step < 3) this.step++;
+    this.step++;
   },
 };
 
@@ -2906,6 +2965,7 @@ function animate() {
   if (eclipse) updateEclipse(dt);
   if (sleepFx) updateSleep(dt);
   if (leapFx) updateLeapFx(dt);
+  if (netsRide) updateNetsRide(dt);
   if (finale) updateFinale(dt);
   updateNetFx(dt);
 
@@ -3117,9 +3177,10 @@ function animate() {
   }
   sPos.needsUpdate = true;
   nightBoat.position.y = Math.sin(t * 0.9) * 0.05;
-  shoreBoat.position.y = Math.sin(t * 0.9 + 2) * 0.05;
+  if (!netsRide) shoreBoat.position.y = Math.sin(t * 0.9 + 2) * 0.05;
   if (!waterWalk) wwBoat.position.y = Math.sin(t * 0.9 + 1) * 0.05;
-  wwFlag.visible = !markerById['fourth-watch'].visited;
+  // 붉은 깃발은 3번이 "지금 갈 차례"일 때만 걸린다 — 빨강은 늘 다음 목적지 하나만 가리킨다
+  wwFlag.visible = target === markerById['fourth-watch'];
   if (wwFlag.visible) wwFlag.rotation.y = Math.sin(t * 2.2) * 0.5; // 펄럭임
 
   // 양 떼: 제자리에서 살랑살랑 풀을 뜯고, 이따금 몇 걸음 옮긴다
