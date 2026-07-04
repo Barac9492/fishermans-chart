@@ -1585,8 +1585,8 @@ function makeSouvenirCanvas() {
   ctx.fillText('열네 곳을 모두 걸었습니다', W / 2, 560);
   ctx.fillStyle = '#5a5142';
   ctx.font = `italic 16px ${bFont}`;
-  const line = '그가 원하지 않는 곳으로 끌려간 언덕까지,';
-  const line2 = '베드로의 참된 길을 끝까지 따라갔습니다.';
+  const line = '빈 그물에서 새벽 숯불까지 —';
+  const line2 = '열네 곳 모두에 같은 분이 계셨습니다.';
   ctx.fillText(line, W / 2, 600);
   ctx.fillText(line2, W / 2, 626);
   ctx.font = `18px ${bFont}`;
