@@ -235,7 +235,7 @@ function cylBetween(p1, p2, r, color, parent = scene) {
   return mesh;
 }
 
-function makeTextTexture(text, { size = 68, color = 'rgba(43,38,32,0.55)', italic = true } = {}) {
+function makeTextTexture(text, { size = 68, color = 'rgba(43,38,32,0.82)', italic = true } = {}) {
   const [cv, ctx] = canvas2d(1024, 144);
   ctx.font = `${italic ? 'italic ' : ''}600 ${size}px 'Noto Serif KR', 'Apple SD Gothic Neo', 'Malgun Gothic', serif`;
   ctx.textAlign = 'center';
@@ -249,6 +249,7 @@ function makeTextTexture(text, { size = 68, color = 'rgba(43,38,32,0.55)', itali
   return tex;
 }
 
+const groundLabels = [];
 function groundLabel(text, x, z, rotY = 0, width = 40) {
   const geo = new THREE.PlaneGeometry(width, (width * 144) / 1024);
   geo.rotateX(-Math.PI / 2);
@@ -257,6 +258,7 @@ function groundLabel(text, x, z, rotY = 0, width = 40) {
   mesh.position.set(x, 0.22, z);
   mesh.rotation.y = rotY;
   scene.add(mesh);
+  groundLabels.push(mesh); // 하늘에서 보기에서는 지도 지명답게 커진다
 }
 
 // 번호 원판 스프라이트 재질 — 다음 목적지(빨강)·대기(회색)·다녀간 곳(먹색) 세 벌
@@ -447,9 +449,18 @@ extrudeLand(ROME_LAND, COLORS.romeLand, COLORS.romeLandSide, { topMap: romeTex }
   if (geos.length) scene.add(new THREE.Mesh(mergeGeometries(geos, false), lambert(COLORS.basalt)));
 }
 
+// 지도식 지명: 위치는 대략 맞게, 거리는 순례 지도답게 압축 — 하늘에서 보기(M)에서 특히 잘 읽힌다
 groundLabel('갈릴리 바다', 0, -130, 0, 34);
-groundLabel('예루살렘', 4, 112, 0, 22);
-groundLabel('로마', -232, 70, 0, 13);
+groundLabel('가버나움', -10, -172, 0, 18);
+groundLabel('가이사랴 빌립보', 14, -174, 0, 27);
+groundLabel('요단 길', 13, -40, 0, 16);
+groundLabel('감람산 · 겟세마네', 46, 110, 0, 27);
+groundLabel('골고다', -40, 106, 0, 13);
+groundLabel('예루살렘', 4, 122, 0, 24);
+groundLabel('욥바 항', -44, 82, 0, 13);
+groundLabel('큰 바다 (지중해)', -120, 55, 0, 38);
+groundLabel('바티칸 언덕', -232, 108, 0, 19);
+groundLabel('로마', -212, 70, 0, 14);
 
 /* ---------------- roads ---------------- */
 
@@ -2039,8 +2050,8 @@ function makeLightFigure() {
   return g;
 }
 const wwFigure = makeLightFigure();    // 물 위 — 빛의 길 끝에 서 계신다
-const shoreFigure = makeLightFigure(); // 새벽 바닷가 — 숯불 곁에 서 계신다
-shoreFigure.position.set(-30, 0, -142.5);
+const shoreFigure = makeLightFigure(); // 새벽 바닷가 — 숯불 곁에 서 계신다 (동쪽 물가)
+shoreFigure.position.set(28.5, 0, -143.5);
 // 붙잡으시는 손: 구원의 순간에만 보이는 빛줄기
 const rescueBeam = new THREE.Mesh(
   new THREE.CylinderGeometry(0.06, 0.06, 1, 6),
@@ -3314,6 +3325,13 @@ function animate() {
   // 붉은 깃발은 3번이 "지금 갈 차례"일 때만 걸린다 — 빨강은 늘 다음 목적지 하나만 가리킨다
   wwFlag.visible = target === markerById['fourth-watch'];
   if (wwFlag.visible) wwFlag.rotation.y = Math.sin(t * 2.2) * 0.5; // 펄럭임
+
+  // 지명 라벨: 하늘에서 보기에서는 지도의 활자처럼 커진다
+  const glScale = chartView ? 2.3 : 1;
+  for (const gl2 of groundLabels) {
+    gl2.scale.x += (glScale - gl2.scale.x) * Math.min(1, dt * 5);
+    gl2.scale.z = gl2.scale.x;
+  }
 
   // 새벽 바닷가의 형상: 긴 밤(9번)이 끝나면 숯불 곁에 서 계시고, 세 번의 물음(11번)까지 머문다
   shoreFigure.visible = markerById['long-night'].visited && !markerById['three-questions'].visited;
