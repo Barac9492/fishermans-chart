@@ -1480,7 +1480,7 @@ const SAVE_KEY = 'fisherman-chart-v1';
 const save = (() => {
   let s = {};
   try { s = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}') || {}; } catch { /* private mode */ }
-  return Object.assign({ charted: [], epilogueShown: false, muted: false }, s);
+  return Object.assign({ charted: [], epilogueShown: false, muted: false, sheep: [] }, s);
 })();
 function persistSave() {
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch { /* private mode */ }
@@ -2691,6 +2691,147 @@ const pentecostCrowd = makeCrowd([
   [-10, 100], [14, 102], [12, 122], [-8, 124], [-14, 112], [16, 112], [-4, 96], [8, 96], [0, 126], [-16, 122],
 ]);
 
+/* ---------------- 잃은 양 (눅 15) — 숨은 수집 ----------------
+   맵 곳곳에 잃은 양 열두 마리가 숨어 있다. 가까이 가면 매애 하고 울고,
+   곁에 서면 찾은 것으로 — 한 마리마다 목자의 말씀 한 줄이 따라온다. */
+const LOST_SHEEP_SPOTS = [
+  [-44, -134], [22, -166], [38, -132], [-34, -92],   // 갈릴리 물가 안팎
+  [26, -192],                                          // 가이사랴 절벽 뒤
+  [16, -54], [-14, 2], [12, 48],                       // 요단 길가
+  [52, 108], [-44, 142], [18, 140],                    // 예루살렘 언저리
+  [-222, 112],                                         // 로마, 경기장 곁
+];
+const LOST_SHEEP_LINES = [
+  '"너희 중에 누가 양 백 마리가 있는데 하나를 잃으면…" (눅 15:4)',
+  '"아흔아홉 마리를 들에 두고, 잃은 것을 찾아 나서지 않겠느냐." (눅 15:4)',
+  '"찾아내면 기뻐서 어깨에 메고 돌아온다." (눅 15:5)',
+  '"나와 함께 기뻐하자. 잃은 양을 찾았다!" (눅 15:6)',
+  '"나는 선한 목자라. 선한 목자는 양들을 위하여 목숨을 버린다." (요 10:11)',
+  '"내 양은 내 음성을 들으며, 나는 그들을 안다." (요 10:27)',
+  '"우리는 다 양 같아서 각기 제 길로 갔거늘…" (사 53:6)',
+  '"여호와는 나의 목자시니 내게 부족함이 없으리로다." (시 23:1)',
+  '"그가 나를 푸른 풀밭에 누이시며 쉴 만한 물가로 인도하시는도다." (시 23:2)',
+  '"내가 사망의 음침한 골짜기로 다닐지라도 해를 두려워하지 않을 것은…" (시 23:4)',
+  '"너희가 전에는 양과 같이 길을 잃었더니, 이제는 목자에게 돌아왔느니라." (벧전 2:25)',
+  '"인자가 온 것은 잃어버린 자를 찾아 구원하려 함이니라." (눅 19:10)',
+];
+const lostSheep = LOST_SHEEP_SPOTS.map(([x, z], i) => {
+  const g = makeSheep(x, z);
+  // 목의 붉은 끈 — 잃은 양의 표식
+  const band = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.14, 0.56), lambert(0xa8341f));
+  band.position.set(0, 0.82, 0.34);
+  g.add(band);
+  return { g, x, z, i, found: false, bleatT: Math.random() * 4, fadeT: -1 };
+});
+const sheepChipEl = document.getElementById('sheep-chip');
+function updateSheepChip() {
+  const n = save.sheep.length;
+  sheepChipEl.textContent = `🐑 ${n}/12`;
+  sheepChipEl.classList.toggle('hidden', n === 0);
+  sheepChipEl.classList.toggle('gold', n === 12);
+}
+function collectSheep(s) {
+  s.found = true;
+  s.fadeT = 0;
+  audio.play('bleat', { gain: 0.22 });
+  if (!save.sheep.includes(s.i)) {
+    save.sheep.push(s.i);
+    persistSave();
+  }
+  updateSheepChip();
+  const n = save.sheep.length;
+  toast(`🐑 ${LOST_SHEEP_LINES[s.i]} — 찾은 양 ${n} / 12`, 6500);
+  if (n === 12) {
+    setTimeout(() => toast('🐑 잃은 양 열두 마리를 모두 찾았어요 — 목자의 마음을 걸어서 배웠어요!', 8000), 6800);
+  }
+}
+function updateLostSheep(dt, t) {
+  for (const s of lostSheep) {
+    if (s.fadeT >= 0) {
+      // 찾은 양은 폴짝폴짝 뛰다 무리에게로 사라진다
+      s.fadeT += dt;
+      const k = Math.min(1, s.fadeT / 1.1);
+      s.g.position.y = Math.abs(Math.sin(s.fadeT * 12)) * 0.5 * (1 - k);
+      s.g.scale.setScalar(0.7 * (1 - k));
+      if (k >= 1) { s.g.visible = false; s.fadeT = -1; }
+      continue;
+    }
+    if (s.found) continue;
+    const d = Math.hypot(player.position.x - s.x, player.position.z - s.z);
+    if (d < 15) {
+      s.bleatT -= dt;
+      if (s.bleatT <= 0) {
+        s.bleatT = 2.4 + Math.random() * 3;
+        audio.play('bleat', { gain: Math.max(0.05, 0.19 - d * 0.011) });
+      }
+      s.g.position.y = Math.abs(Math.sin(t * 4 + s.i)) * 0.08; // 안절부절
+    }
+    if (d < 2.8 && !state.modal && !flowBusy) collectSheep(s);
+  }
+}
+
+/* ---------------- 반응하는 세계: 이야기 진행에 따라 바뀌는 말풍선 ---------------- */
+function makeBubbleTexture(text) {
+  const [cv, ctx2] = canvas2d(16, 16); // 측정용
+  ctx2.font = `500 34px 'Noto Serif KR', 'Apple SD Gothic Neo', serif`;
+  const tw = Math.ceil(ctx2.measureText(text).width) + 56;
+  const [bv, btx] = canvas2d(tw, 96);
+  btx.font = `500 34px 'Noto Serif KR', 'Apple SD Gothic Neo', serif`;
+  btx.fillStyle = 'rgba(236,226,196,0.94)';
+  btx.strokeStyle = 'rgba(59,53,44,0.9)';
+  btx.lineWidth = 3;
+  btx.beginPath();
+  if (btx.roundRect) btx.roundRect(4, 8, tw - 8, 72, 26);
+  else btx.rect(4, 8, tw - 8, 72); // 구형 브라우저
+  btx.fill();
+  btx.stroke();
+  btx.fillStyle = '#3b352c';
+  btx.textAlign = 'center';
+  btx.textBaseline = 'middle';
+  btx.fillText(text, tw / 2, 46);
+  const tex = new THREE.CanvasTexture(bv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return { tex, w: tw };
+}
+const TALK_LINES = [
+  ['밤새 그물이 텅 비었다는군.', '회당에 새 선생님이 오셨대.', '시몬네 장모가 앓아누웠다던데.', '오늘은 호수가 잔잔하네.'],
+  ['그 나사렛 선생 이야기 들었어?', '병자들이 낫고 있대!', '오천 명이 배불리 먹었다더군.', '그분이 예루살렘으로 가신대.'],
+  ['도성이 술렁이고 있어.', '한밤중에 그 선생이 잡혀갔대.', '정오였는데 온 땅이 어두웠잖아…', '성전 휘장이 찢어졌다더군.'],
+  ['무덤이 비었다던데!', '그를 봤다는 사람들이 있어.', '갈릴리로 가라 하셨다던데.', '정말일까… 살아나신 걸까?'],
+  ['삼천 명이 세례를 받았대!', '그들은 가진 것을 서로 나눈다더군.', '그 어부가 무리 앞에서 외쳤다지.', '이 이야기가 어디까지 갈까?'],
+  ['그 어부, 로마까지 갔다지.', '반석 위에 교회를 세운다더니.', '우리도 그 길을 걸을 수 있을까.', '이야기는 아직 끝나지 않았어.'],
+];
+function storyStage() {
+  return nextNum <= 2 ? 0 : nextNum <= 5 ? 1 : nextNum <= 8 ? 2 : nextNum <= 11 ? 3 : nextNum <= 14 ? 4 : 5;
+}
+const talkers = [];
+function addTalker(person, idx) {
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false, opacity: 0 }));
+  sprite.position.set(0, 4.9, 0);
+  sprite.renderOrder = 6;
+  person.g.add(sprite);
+  talkers.push({ sprite, g: person.g, idx, stage: -1 });
+}
+[0, 2, 4, 6].forEach((k, j) => { if (capernaumCrowd[k]) addTalker(capernaumCrowd[k], j); });
+[1, 3, 5, 8].forEach((k, j) => { if (pentecostCrowd[k]) addTalker(pentecostCrowd[k], j); });
+function updateTalkers(dt) {
+  const st = storyStage();
+  for (const tk of talkers) {
+    if (tk.stage !== st) {
+      tk.stage = st;
+      const { tex, w } = makeBubbleTexture(TALK_LINES[st][tk.idx % 4]);
+      if (tk.sprite.material.map) tk.sprite.material.map.dispose();
+      tk.sprite.material.map = tex;
+      tk.sprite.material.needsUpdate = true;
+      const h = 1.7; // 그룹 스케일(0.55)을 감안한 로컬 크기
+      tk.sprite.scale.set((w / 96) * h, h, 1);
+    }
+    const d = Math.hypot(player.position.x - tk.g.position.x, player.position.z - tk.g.position.z);
+    const target = d < 11 && !state.modal ? 0.95 : 0;
+    tk.sprite.material.opacity += (target - tk.sprite.material.opacity) * Math.min(1, dt * 4);
+  }
+}
+
 // ---- 오순절(12번): 바람 · 불의 혀 · 일어서서 외치다 ----
 const flameFalls = [];
 function flameFallAt(x, z) {
@@ -3401,6 +3542,8 @@ function animate() {
   updateCrowd(capernaumCrowd, dt, t);
   updateCrowd(pentecostCrowd, dt, t);
   updateFlameFalls(dt, t);
+  updateLostSheep(dt, t);
+  updateTalkers(dt);
 
   // 호수의 물고기가 이따금 뛴다 (호수 근처에 있을 때만)
   ambientFishTimer -= dt;
@@ -3499,6 +3642,11 @@ for (const id of save.charted) {
 if (save.epilogueShown) {
   state.epilogueShown = true;
 }
+// 지난 세션에 찾은 양들은 이미 무리로 돌아갔다
+for (const i of save.sheep) {
+  if (lostSheep[i]) { lostSheep[i].found = true; lostSheep[i].g.visible = false; }
+}
+updateSheepChip();
 updateNextHint();
 
 animate();

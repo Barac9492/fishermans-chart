@@ -232,6 +232,33 @@ function step(wood) {
   src.start(t0, Math.random() * 1.5, 0.12);
 }
 
+// 양 울음: 떨리는 매애 — 잃은 양이 근처에서 부른다
+function bleat(gain = 0.15) {
+  const t0 = ctx.currentTime;
+  const o = ctx.createOscillator();
+  o.type = 'sawtooth';
+  o.frequency.setValueAtTime(560, t0);
+  o.frequency.exponentialRampToValueAtTime(420, t0 + 0.34);
+  const vib = ctx.createOscillator();
+  vib.frequency.value = 22;
+  const vg = ctx.createGain();
+  vg.gain.value = 26;
+  vib.connect(vg).connect(o.frequency);
+  vib.start(t0);
+  vib.stop(t0 + 0.42);
+  const f = ctx.createBiquadFilter();
+  f.type = 'bandpass';
+  f.frequency.value = 820;
+  f.Q.value = 1.1;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(gain, t0 + 0.04);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.42);
+  o.connect(f).connect(g).connect(sfx);
+  o.start(t0);
+  o.stop(t0 + 0.46);
+}
+
 // 물보라: 그물이 수면을 치는 소리
 function splash(gain = 0.3) {
   const t0 = ctx.currentTime;
@@ -392,6 +419,7 @@ export const audio = {
       case 'rooster': roosterCrow(opts.gain ?? 0.14); break;
       case 'windRush': windRush(opts.gain ?? 0.3); break;
       case 'splash': splash(opts.gain ?? 0.3); break;
+      case 'bleat': bleat(opts.gain ?? 0.15); break;
     }
   },
 

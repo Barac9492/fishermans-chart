@@ -320,6 +320,27 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
   border-color: var(--gold);
 }
 .relic-slot.pop { animation: relic-pop 0.6s cubic-bezier(0.25, 1.6, 0.5, 1); }
+
+/* 잃은 양 카운터 — 첫 마리를 찾으면 나타난다 */
+#sheep-chip {
+  position: absolute;
+  bottom: 76px;
+  left: 14px;
+  padding: 5px 11px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  background: rgba(236, 226, 196, 0.85);
+  border: 1px solid rgba(90, 81, 66, 0.4);
+  border-radius: 15px;
+  box-shadow: 1px 1px 0 rgba(43, 38, 32, 0.2);
+  pointer-events: auto;
+}
+#sheep-chip.gold {
+  border-color: var(--gold);
+  background: rgba(184, 144, 46, 0.2);
+  box-shadow: 0 0 10px 2px rgba(184, 144, 46, 0.35);
+}
 @keyframes relic-pop {
   0% { transform: scale(2.4); }
   60% { transform: scale(0.9); }
