@@ -1630,6 +1630,7 @@ function tryVisit() {
   if (state.sailMode) { startVoyage(state.sailMode === 'back'); return; }
   if (!state.nearSite) return;
   const m = state.nearSite;
+  if (!unlocked(m)) { lockedToast(); return; } // E키로 눌러도 순서는 지킨다
   const flow = !m.visited && flows[m.site.id];
   if (flow) { flow.advance(m); return; }
   openCard(m);
@@ -1645,6 +1646,8 @@ function handleTap(cx, cy) {
   );
   for (const m of markers) {
     if (tapRay.intersectObject(m.g, true).length) {
+      // 아직 차례가 아닌 곳은 열리지 않는다 — 이야기는 순서대로
+      if (!unlocked(m)) { lockedToast(); return; }
       // 장면이 있는 곳은 멀리서 탭해도 미리 열리지 않는다 — 직접 가서 겪어야 한다
       const flow = !m.visited && flows[m.site.id];
       if (flow) {
@@ -1725,11 +1728,13 @@ function chartSite(marker, { silent = false } = {}) {
 }
 
 // HUD의 「다음 →」 안내와 범례의 붉은 하이라이트를 이야기 순서에 맞춘다
+let nextNum = 1; // 이야기 순서상 지금 갈 차례의 번호 — 순서 잠금의 기준
 function updateNextHint() {
   let nxt = null;
   for (const m of markers) {
     if (!m.visited && (!nxt || m.site.num < nxt.site.num)) nxt = m;
   }
+  nextNum = nxt ? nxt.site.num : 999;
   keyList.querySelectorAll('li.next').forEach((li) => li.classList.remove('next'));
   const el = document.getElementById('next-hint');
   if (!nxt) {
@@ -1739,6 +1744,13 @@ function updateNextHint() {
   document.getElementById(`key-${nxt.site.id}`).classList.add('next');
   el.textContent = `다음 → ${nxt.site.num}. ${nxt.shortTitle}`
     + (nxt.site.id === 'fourth-watch' ? ' (물가의 배를 타요)' : '');
+}
+// 앞의 이야기를 모두 마쳐야 열린다 — 다녀온 곳은 언제든 다시 읽을 수 있다
+function unlocked(m) {
+  return m.visited || m.site.num === nextNum;
+}
+function lockedToast() {
+  toast(`아직 순서가 아니에요 — 다음은 ${nextNum}번이에요. 위의 「다음」 안내를 따라가요.`);
 }
 
 function openCard(marker) {
@@ -1989,8 +2001,8 @@ let tombRunDone = false;
 const _tombFrom = new THREE.Vector3();
 function updateTombRace(dt, distTomb) {
   const site8 = markerById['empty-tomb'];
-  // 발동: 무덤 18유닛 안, 아직 기록 전, 한 번만
-  if (!tombRun && !tombRunDone && site8 && !site8.visited && distTomb < 18 && distTomb > 7) {
+  // 발동: 무덤 18유닛 안, 8번의 차례일 때, 한 번만
+  if (!tombRun && !tombRunDone && site8 && !site8.visited && unlocked(site8) && distTomb < 18 && distTomb > 7) {
     tombRun = { t: 0, phase: 'run' };
     tombRunDone = true;
     _tombFrom.set(player.position.x, 0, player.position.z);
@@ -3178,9 +3190,10 @@ function animate() {
     updateTombRace(dt, dt8);
   }
 
-  // 배에 오르기 프롬프트: 물 위 걷기 배 근처, 물 위 걷기 중이 아닐 때
+  // 배에 오르기 프롬프트: 물 위 걷기 배 근처 — 단, 3번의 차례가 되어야 배가 열린다
   const distBoard = Math.hypot(player.position.x - WW_BOARD.x, player.position.z - WW_BOARD.z);
-  const boardOn = state.started && !state.modal && !voyage && !finale && !waterWalk && distBoard < 6.5;
+  const boardOn = state.started && !state.modal && !voyage && !finale && !waterWalk
+    && distBoard < 6.5 && unlocked(markerById['fourth-watch']);
   state.boardMode = boardOn;
   // 로마 ↔ 성지 왕복 배: 13번을 다녀온 뒤에는 양쪽 선착장에서 언제든 오갈 수 있다
   let sailMode = null;
@@ -3191,7 +3204,9 @@ function animate() {
     else if (dJoppa < 6) sailMode = 'go';
   }
   state.sailMode = sailMode;
-  const promptOn = (boardOn || sailMode || (!!near && state.started && !state.modal && !voyage && !finale)) && !flowBusy;
+  // 표지 프롬프트는 앞의 이야기를 모두 마친 곳에서만 뜬다
+  const nearOpen = !!near && unlocked(near);
+  const promptOn = (boardOn || sailMode || (nearOpen && state.started && !state.modal && !voyage && !finale)) && !flowBusy;
   visitBtn.classList.toggle('hidden', !promptOn);
   if (promptOn) {
     const flowNear = near && !near.visited && flows[near.site.id];
@@ -3374,8 +3389,8 @@ function animate() {
     s.g.rotation.z = Math.sin(t * 1.2 + s.ph) * 0.035;
   }
 
-  // 마을 사람들: 가버나움의 무리는 다가가면 문 앞으로 모여든다 (막 1:33)
-  if (state.started && !crowdCalled && !markerById['capernaum-house'].visited) {
+  // 마을 사람들: 가버나움의 무리는 2번의 차례에 다가가면 문 앞으로 모여든다 (막 1:33)
+  if (state.started && !crowdCalled && !markerById['capernaum-house'].visited && unlocked(markerById['capernaum-house'])) {
     const dHouse = Math.hypot(player.position.x - markerById['capernaum-house'].site.pos.x, player.position.z - markerById['capernaum-house'].site.pos.z);
     if (dHouse < 22) {
       crowdCalled = true;
