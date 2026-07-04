@@ -268,6 +268,68 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
 #mute-btn:hover { transform: none; background: var(--sand); }
 #mute-btn.muted { opacity: 0.55; text-decoration: line-through; }
 
+/* 유물 보따리 — 찾은 곳마다 아이콘이 채워지는 14칸 선반 */
+#satchel {
+  position: absolute;
+  bottom: 74px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  max-width: 92vw;
+  padding: 5px 9px;
+  background: rgba(236, 226, 196, 0.72);
+  border: 1px solid rgba(90, 81, 66, 0.35);
+  border-radius: 18px;
+  box-shadow: 1px 1px 0 rgba(43, 38, 32, 0.18);
+  pointer-events: none;
+}
+.relic-slot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  line-height: 1;
+  background: rgba(43, 38, 32, 0.08);
+  border: 1px solid rgba(90, 81, 66, 0.28);
+  filter: grayscale(1);
+  opacity: 0.4;
+  transition: opacity 0.4s ease, filter 0.4s ease, transform 0.3s ease;
+}
+.relic-slot.filled {
+  filter: none;
+  opacity: 1;
+  background: rgba(184, 144, 46, 0.18);
+  border-color: var(--gold);
+}
+.relic-slot.pop { animation: relic-pop 0.6s cubic-bezier(0.25, 1.6, 0.5, 1); }
+@keyframes relic-pop {
+  0% { transform: scale(2.4); }
+  60% { transform: scale(0.9); }
+  100% { transform: scale(1); }
+}
+
+/* 기념 카드 (완주 시) */
+#souvenir-wrap { margin-top: 18px; }
+#souvenir-img {
+  display: block;
+  width: 100%;
+  max-width: 300px;
+  margin: 0 auto 12px;
+  border: 1.5px solid var(--ink);
+  box-shadow: 3px 3px 0 rgba(43, 38, 32, 0.25);
+}
+#souvenir-btn {
+  margin-top: 0;
+  font-size: 15px;
+  padding: 9px 22px;
+}
+
 /* all fourteen remembered: the needle turns gold and idles */
 #compass.compass-done #compass-arrow { animation: compass-idle 16s linear infinite; opacity: 0.85; }
 #compass.compass-done #compass-arrow::before { border-bottom-color: var(--gold); }
@@ -344,6 +406,48 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
 }
 
 .dates { font-style: italic; color: var(--ink-soft); margin-top: 4px; font-size: 16px; }
+
+/* 핵심 구절 인용 박스 — 급한 독자는 이 한 줄만 읽어도 이야기가 이어진다 */
+.verse {
+  margin: 16px auto 0;
+  max-width: 460px;
+  padding: 12px 18px;
+  border-left: 3px solid var(--red);
+  background: rgba(168, 52, 31, 0.06);
+  font-size: clamp(15px, 2.6vw, 18px);
+  line-height: 1.5;
+  color: var(--ink);
+  text-align: left;
+}
+
+/* 함께 나눠요 — 고등부 나눔 질문 (접힘) */
+.discuss {
+  margin-top: 18px;
+  border: 1.5px solid var(--gold);
+  border-radius: 4px;
+  background: rgba(184, 144, 46, 0.07);
+  text-align: left;
+}
+.discuss summary {
+  font-family: 'Nanum Myeongjo', serif;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  font-size: 15px;
+  color: var(--gold);
+  cursor: pointer;
+  list-style: none;
+  padding: 10px 14px;
+}
+.discuss summary::-webkit-details-marker { display: none; }
+.discuss summary::before { content: '🕊  '; }
+.discuss summary::after { content: '  ▾'; font-size: 11px; }
+.discuss:not([open]) summary::after { content: '  ▸'; }
+.discuss #card-question {
+  padding: 0 16px 14px;
+  font-size: clamp(14.5px, 2.4vw, 16.5px);
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
 
 .card-figure {
   margin: 16px auto 0;
@@ -508,6 +612,17 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
 }
 .reset-link:hover { transform: none; color: var(--ink); border-color: var(--ink); }
 .reset-link:active { transform: none; box-shadow: none; }
+
+/* 물에 가라앉을 때 화면 가장자리가 어두워지는 비네트 */
+#sink-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 16;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s linear;
+  background: radial-gradient(ellipse at center, rgba(20,26,40,0) 34%, rgba(10,14,26,0.95) 100%);
+}
 
 /* ---------- voyage caption (scripted sea-crossing to Rome) ---------- */
 #voyage-caption {

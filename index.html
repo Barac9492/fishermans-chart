@@ -69,6 +69,7 @@
     </div>
     <button id="view-btn" title="새의 눈 지도 보기 전환 (M)">지도 보기</button>
     <button id="mute-btn" title="소리가 켜져 있습니다 — 탭하여 끄기">&#9834;</button>
+    <div id="satchel" title="찾은 유물 보따리"></div>
   </div>
 
   <!-- 첫 터치 안내 -->
@@ -80,6 +81,7 @@
   <button id="visit-btn" class="hidden">&#9875;&ensp;<span id="visit-label">장소 방문</span></button>
   <div id="toast" class="hidden"></div>
   <div id="voyage-caption" class="hidden"></div>
+  <div id="sink-veil"></div>
 
   <!-- 장소 카드 -->
   <div id="card" class="overlay hidden">
@@ -87,10 +89,15 @@
       <div class="card-seal"><span id="card-num">1</span></div>
       <h2 id="card-title"></h2>
       <p id="card-dates" class="dates"></p>
+      <p id="card-verse" class="verse hidden"></p>
       <div id="card-media"></div>
       <div id="card-body"></div>
       <p id="card-artifact" class="artifact"></p>
-      <button id="card-close">계속 둘러보기</button>
+      <details id="card-discuss" class="discuss hidden">
+        <summary>함께 나눠요</summary>
+        <p id="card-question"></p>
+      </details>
+      <button id="card-close">계속 걷기</button>
     </div>
   </div>
 
@@ -105,6 +112,7 @@
         팔을 벌리고 남이 너에게 띠를 띠워 원하지 않는 곳으로 데려가리라.&rdquo;
         <cite>&mdash; 요한복음 21:18</cite>
       </blockquote>
+      <div id="souvenir-wrap"></div>
       <button id="epilogue-close">계속 지도를 걷기</button>
       <div class="rule-bottom"></div>
     </div>

@@ -62,8 +62,12 @@ const ROME_LAND = [
 // given to walk across when he is called out onto it.
 const WALK_LINES = [
   { a: [-24, -110], b: [-6, -118], width: 6.5 },   // Capernaum dock (site 9)
-  { a: [-32, -120], b: [2, -128], width: 7 },       // the water made walkable (site 3)
 ];
+// 물 위 걷기(3번): 배에서 내린 뒤에만 열리는 빛의 길. 배를 타고 나가야 밟을 수 있다.
+const WW_BOARD = { x: -24, z: -116 };   // 배에 오르는 물가
+const WW_DROP = { x: -9, z: -128 };     // 배가 멈추는 지점 (물 위 걷기 시작)
+const WW_MARKER = { x: 2, z: -128 };    // 3번 표지 (물 한가운데)
+let waterWalkPath = null;               // { a:[x,z], b:[x,z], width } — 열렸을 때만 밟힌다
 
 const JOPPA_BOARD = { x: -46, z: 92 };     // where the voyage to Rome begins
 const ROME_LANDING = { x: -207, z: 96 };   // where it ends
@@ -167,6 +171,8 @@ function onWalkLine(x, z) {
   for (const l of WALK_LINES) {
     if (distToSegment(x, z, l.a[0], l.a[1], l.b[0], l.b[1]) < l.width / 2) return true;
   }
+  const w = waterWalkPath;
+  if (w && distToSegment(x, z, w.a[0], w.a[1], w.b[0], w.b[1]) < w.width / 2) return true;
   return false;
 }
 
@@ -580,6 +586,29 @@ function fishingBoat(x, z, rotY = 0) {
 }
 const nightBoat = fishingBoat(-6, -118, 0.3);
 const shoreBoat = fishingBoat(-33, -122, -0.6); // moored where the nets were first let down
+// 물 위 걷기용 배 (3번): 물가에 대어져 있다가, 타면 호수 한가운데로 나간다
+const wwBoat = fishingBoat(WW_BOARD.x, WW_BOARD.z, Math.PI * 0.75);
+
+// 빛의 길: 배에서 내려 표지까지, 물 위에 떠오르는 반투명 띠 (열렸을 때만 보인다)
+const lightPath = (() => {
+  const len = Math.hypot(WW_MARKER.x - WW_DROP.x, WW_MARKER.z - WW_DROP.z);
+  const geo = new THREE.PlaneGeometry(len, 5);
+  geo.rotateX(-Math.PI / 2);
+  const [cv, ctx] = canvas2d(256, 64);
+  const grad = ctx.createLinearGradient(0, 0, 0, 64);
+  grad.addColorStop(0, 'rgba(255,240,200,0)');
+  grad.addColorStop(0.5, 'rgba(255,240,200,0.55)');
+  grad.addColorStop(1, 'rgba(255,240,200,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 256, 64);
+  const tex = new THREE.CanvasTexture(cv);
+  const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, opacity: 0 }));
+  m.position.set((WW_DROP.x + WW_MARKER.x) / 2, 0.12, (WW_DROP.z + WW_MARKER.z) / 2);
+  m.rotation.y = -Math.atan2(WW_MARKER.z - WW_DROP.z, WW_MARKER.x - WW_DROP.x);
+  m.visible = false;
+  scene.add(m);
+  return m;
+})();
 
 /* ---------------- Caesarea Philippi ---------------- */
 {
@@ -811,6 +840,8 @@ const markers = SITES.map((site, i) => {
     g, pin, ring, sprite, pinMat, phase: i * 0.9, visited: false,
   };
 });
+const markerById = {};
+markers.forEach((m) => { markerById[m.site.id] = m; });
 const firePositions = ['first-fire', 'second-fire'].map(
   (id) => markers.find((m) => m.site.id === id).site.pos
 );
@@ -900,6 +931,134 @@ const voyageBoat = fishingBoat(0, 0, 0);
 }
 voyageBoat.visible = false;
 
+// 요한(사랑하시던 제자)의 반투명 형상 — 빈 무덤 달음질(요 20:4)에서 앞질러 달린다
+const ghostJohn = new THREE.Group();
+{
+  const gm = () => new THREE.MeshBasicMaterial({ color: 0xdfeaf2, transparent: true, opacity: 0.5, depthWrite: false });
+  const robe = new THREE.Mesh(new THREE.ConeGeometry(0.62, 2, 10), gm());
+  robe.position.y = 1;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 10), gm());
+  head.position.y = 2.5;
+  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.9, 0.26), gm());
+  const legR = legL.clone();
+  legL.position.set(-0.2, 0.45, 0);
+  legR.position.set(0.2, 0.45, 0);
+  ghostJohn.add(robe, head, legL, legR);
+  ghostJohn.userData.legL = legL;
+  ghostJohn.userData.legR = legR;
+  ghostJohn.scale.setScalar(0.58);
+  ghostJohn.visible = false;
+  scene.add(ghostJohn);
+}
+const TOMB_MOUTH = { x: -37, z: 131 };
+
+/* ---------------- 길 위의 생명: 양 떼·목자·낙타·호수의 배·성벽 횃불 ---------------- */
+
+// 양 한 마리
+function makeSheep(x, z) {
+  const g = new THREE.Group();
+  const wool = new THREE.MeshLambertMaterial({ color: 0xe8e2d2, flatShading: true });
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6), wool);
+  body.scale.set(1.3, 0.9, 1);
+  body.position.y = 0.7;
+  body.castShadow = true;
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.34, 0.36), lambert(0x4a4038));
+  head.position.set(0, 0.75, 0.62);
+  for (const [lx, lz] of [[-0.28, -0.3], [0.28, -0.3], [-0.28, 0.3], [0.28, 0.3]]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.5, 0.12), lambert(0x3a3229));
+    leg.position.set(lx, 0.25, lz);
+    g.add(leg);
+  }
+  g.add(body, head);
+  g.position.set(x, 0, z);
+  g.scale.setScalar(0.7);
+  scene.add(g);
+  return g;
+}
+// 요단 길 가에서 풀 뜯는 양 떼와 목자
+const sheep = [];
+{
+  const cx = 4, cz = 30; // 남쪽 요단 길가
+  for (let i = 0; i < 7; i++) {
+    const a = Math.random() * Math.PI * 2, r = 1.5 + Math.random() * 5;
+    const sx = cx + Math.cos(a) * r, sz = cz + Math.sin(a) * r;
+    if (!onHolyLand(sx, sz)) continue;
+    sheep.push({ g: makeSheep(sx, sz), hx: sx, hz: sz, ph: Math.random() * 6, dir: Math.random() * Math.PI * 2, t: Math.random() * 3 });
+  }
+  // 목자: 지팡이를 든 형상
+  const shep = new THREE.Group();
+  const robe = new THREE.Mesh(new THREE.ConeGeometry(0.6, 2, 9), lambert(0x6a5a44));
+  robe.position.y = 1;
+  robe.castShadow = true;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.4, 10, 8), lambert(0xc99a72));
+  head.position.y = 2.35;
+  const crook = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.6, 6), lambert(0x5a4128));
+  crook.position.set(0.5, 1.3, 0);
+  crook.rotation.z = 0.12;
+  shep.add(robe, head, crook);
+  shep.position.set(cx - 6, 0, cz - 2);
+  shep.scale.setScalar(0.62);
+  scene.add(shep);
+}
+
+// 호수를 가로지르는 작은 돛단배 (밤낮 없이 잔잔히 오간다)
+const lakeBoats = [];
+{
+  const mk = (x, z, dir) => {
+    const b = fishingBoat(x, z, dir > 0 ? 0 : Math.PI);
+    lakeBoats.push({ g: b, z0: -150, z1: -108, x, dir, speed: 1.4 + Math.random() * 0.8, ph: Math.random() * 6 });
+  };
+  mk(-14, -120, 1);
+  mk(18, -140, -1);
+}
+
+// 예루살렘 성벽 위의 횃불 (밤이라 은은히 빛난다)
+const torches = [];
+{
+  const spots = [
+    [-42, 100], [-42, 128], [42, 100], [42, 128],
+    [-20, 90], [20, 90], [0, 138], [-30, 138],
+  ];
+  const flameMat = new THREE.MeshBasicMaterial({ color: 0xff8a3a, transparent: true, opacity: 0.9, fog: false });
+  for (const [x, z] of spots) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 1.2, 5), lambert(0x2a2018));
+    post.position.set(x, 7.6, z);
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.7, 7), flameMat.clone());
+    flame.position.set(x, 8.5, z);
+    scene.add(post, flame);
+    torches.push(flame);
+  }
+}
+
+// 남쪽 길을 느릿느릿 오가는 낙타 대상 행렬
+function makeCamel() {
+  const g = new THREE.Group();
+  const hide = lambert(0xb08a5a);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 1.7), hide);
+  body.position.y = 1.5;
+  body.castShadow = true;
+  for (const hx of [-0.25, 0.35]) {
+    const hump = new THREE.Mesh(new THREE.SphereGeometry(0.32, 8, 6), hide);
+    hump.position.set(0, 2, hx);
+    g.add(hump);
+  }
+  const neck = new THREE.Mesh(new THREE.BoxGeometry(0.28, 1, 0.34), hide);
+  neck.position.set(0, 2, 0.95);
+  neck.rotation.x = -0.5;
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.36, 0.5), hide);
+  head.position.set(0, 2.55, 1.3);
+  for (const [lx, lz] of [[-0.25, -0.6], [0.25, -0.6], [-0.25, 0.6], [0.25, 0.6]]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.5, 0.14), hide);
+    leg.position.set(lx, 0.75, lz);
+    g.add(leg);
+  }
+  g.add(body, neck, head);
+  scene.add(g);
+  return g;
+}
+const caravan = { camels: [], u: 0, path: [[6, -60], [-4, -20], [4, 20], [-4, 60]] };
+for (let i = 0; i < 3; i++) caravan.camels.push({ g: makeCamel(), lag: i * 0.05 });
+
 /* ---------------- gulls ---------------- */
 
 const gulls = [];
@@ -960,6 +1119,7 @@ window.addEventListener('keydown', (e) => {
   keys[e.code] = true;
   if (finale) { skipFinale(); return; }
   if (voyage) { skipVoyage(); return; }
+  if (waterWalk && waterWalk.phase !== 'walk') { skipWaterWalk(); return; } // 승선/귀환 컷신은 건너뛰기, 물 위 걷기 중엔 정상 조작
   if ((e.code === 'KeyE' || e.code === 'Enter') && state.started) tryVisit();
   if (e.code === 'KeyM' && state.started) toggleView();
 });
@@ -977,6 +1137,7 @@ function onUi(e) {
 window.addEventListener('pointerdown', (e) => {
   if (finale) { skipFinale(); return; }
   if (voyage) { skipVoyage(); return; }
+  if (waterWalk && waterWalk.phase === 'boarding') { skipWaterWalk(); return; }
   if (!state.started || state.modal || onUi(e)) return;
   const wantsJoy = e.pointerType === 'touch' && e.clientX < window.innerWidth * 0.45;
   if (wantsJoy && joy.id === null) {
@@ -1052,8 +1213,11 @@ const cardNum = document.getElementById('card-num');
 const cardTitle = document.getElementById('card-title');
 const cardDates = document.getElementById('card-dates');
 const cardMedia = document.getElementById('card-media');
+const cardVerse = document.getElementById('card-verse');
 const cardBody = document.getElementById('card-body');
 const cardArtifact = document.getElementById('card-artifact');
+const cardDiscuss = document.getElementById('card-discuss');
+const cardQuestion = document.getElementById('card-question');
 const epilogueEl = document.getElementById('epilogue');
 const progressEl = document.getElementById('progress');
 const compassEl = document.getElementById('compass');
@@ -1073,12 +1237,34 @@ function toggleView() {
 viewBtn.addEventListener('click', toggleView);
 
 const keyList = document.getElementById('key-list');
-[...SITES].sort((a, b) => a.num - b.num).forEach((s) => {
+const orderedSites = [...SITES].sort((a, b) => a.num - b.num);
+orderedSites.forEach((s) => {
   const li = document.createElement('li');
   li.id = `key-${s.id}`;
   li.innerHTML = `<span class="knum">${s.num}</span><span>${s.title.replace('—', '·')}</span>`;
   keyList.appendChild(li);
 });
+
+// 유물 보따리 — 번호순 14칸, id로 채운다
+const satchelEl = document.getElementById('satchel');
+const relicSlots = {};
+orderedSites.forEach((s) => {
+  const slot = document.createElement('span');
+  slot.className = 'relic-slot';
+  slot.title = s.title.replace('—', '·');
+  slot.textContent = s.relic || '·';
+  relicSlots[s.id] = slot;
+  satchelEl.appendChild(slot);
+});
+function fillRelic(siteId, { pop = false } = {}) {
+  const slot = relicSlots[siteId];
+  if (!slot || slot.classList.contains('filled')) return;
+  slot.classList.add('filled');
+  if (pop) {
+    slot.classList.add('pop');
+    setTimeout(() => slot.classList.remove('pop'), 650);
+  }
+}
 
 let toastTimer = null;
 function toast(msg, ms = 4200) {
@@ -1156,7 +1342,9 @@ audio.setMuted(save.muted);
 reflectMute();
 
 function tryVisit() {
-  if (!state.nearSite || state.modal) return;
+  if (state.modal || voyage || finale) return;
+  if (state.boardMode) { startWaterWalk(); return; }
+  if (!state.nearSite) return;
   openCard(state.nearSite);
 }
 visitBtn.addEventListener('click', tryVisit);
@@ -1191,6 +1379,10 @@ function beginCard(num, title, dates) {
   cardTitle.textContent = title;
   cardDates.textContent = dates;
   cardMedia.innerHTML = '';
+  // 이름난 장소(별표)에는 구절/나눔 질문이 없으니 기본은 숨김; openCard가 다시 켠다
+  cardVerse.classList.add('hidden');
+  cardDiscuss.classList.add('hidden');
+  cardDiscuss.removeAttribute('open');
 }
 
 function openLandmarkCard(info) {
@@ -1226,6 +1418,7 @@ function chartSite(marker, { silent = false } = {}) {
     save.charted.push(marker.site.id);
     persistSave();
   }
+  fillRelic(marker.site.id, { pop: !silent });
   if (silent) {
     settlePin(marker);
   } else {
@@ -1250,13 +1443,21 @@ function openCard(marker) {
     fig.append(img, cap);
     cardMedia.appendChild(fig);
   }
+  if (s.verse) {
+    cardVerse.textContent = s.verse;
+    cardVerse.classList.remove('hidden');
+  }
   cardBody.innerHTML = s.body.map((p) => `<p>${p}</p>`).join('');
   cardArtifact.style.display = '';
   const firstVisit = !marker.visited;
   cardArtifact.innerHTML = firstVisit
-    ? `<b>간직함:</b> ${s.artifact}`
-    : `<b>기억함:</b> ${s.artifact}`;
+    ? `<b>간직함:</b> ${s.artifact} &nbsp;${s.relic || ''}`
+    : `<b>기억함:</b> ${s.artifact} &nbsp;${s.relic || ''}`;
   cardArtifact.classList.toggle('stamped', firstVisit);
+  if (s.question) {
+    cardQuestion.textContent = s.question.replace(/\s+/g, ' ').trim();
+    cardDiscuss.classList.remove('hidden');
+  }
   cardEl.classList.remove('hidden');
   if (firstVisit) {
     chartSite(marker);
@@ -1273,7 +1474,10 @@ document.getElementById('card-close').addEventListener('click', () => {
     audio.play('bell');
     pendingPinFx = null;
   }
-  if (pendingVoyage) {
+  if (waterWalk && waterWalk.phase === 'walk') {
+    // 물 위 걷기 중 3번 카드를 닫으면 배가 물가로 데려다 준다
+    startWaterWalkReturn();
+  } else if (pendingVoyage) {
     pendingVoyage = false;
     startVoyage();
   } else if (state.visitedCount === SITES.length && !state.epilogueShown) {
@@ -1287,8 +1491,101 @@ function showEpilogue() {
   save.epilogueShown = true;
   persistSave();
   document.getElementById('epilogue-body').innerHTML = EPILOGUE.map((p) => `<p>${p}</p>`).join('');
+  buildSouvenir();
   epilogueEl.classList.remove('hidden');
   state.modal = true;
+}
+
+// 완주 기념 카드: 유물 14개가 박힌 세로 카드 이미지를 만들어 저장/공유
+let souvenirURL = null;
+function makeSouvenirCanvas() {
+  const W = 600, H = 840, s = 2;
+  const [cv, ctx] = canvas2d(W * s, H * s);
+  ctx.scale(s, s);
+  ctx.fillStyle = '#ece2c4';
+  ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = '#2b2620';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(16, 16, W - 32, H - 32);
+  ctx.strokeStyle = '#a8341f';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(24, 24, W - 48, H - 48);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#2b2620';
+  const kFont = "'Nanum Myeongjo', 'Apple SD Gothic Neo', 'Malgun Gothic', serif";
+  const bFont = "'Noto Serif KR', 'Apple SD Gothic Neo', serif";
+  ctx.font = `800 44px ${kFont}`;
+  ctx.fillText('어부의 지도', W / 2, 96);
+  ctx.font = `italic 18px ${bFont}`;
+  ctx.fillStyle = '#5a5142';
+  ctx.fillText('시몬, 베드로라 불린 이', W / 2, 130);
+  ctx.fillText('갈릴리에서 로마까지', W / 2, 156);
+  // 유물 7×2 격자
+  const cols = 7, gx = W / (cols + 1), gy0 = 250, gyStep = 118;
+  ctx.font = '46px "Apple Color Emoji", "Segoe UI Emoji", sans-serif';
+  orderedSites.forEach((site, i) => {
+    const col = i % cols, row = Math.floor(i / cols);
+    const cx = gx * (col + 1), cy = gy0 + row * gyStep;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 34, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(184,144,46,0.16)';
+    ctx.fill();
+    ctx.strokeStyle = '#b8902e';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.font = '40px "Apple Color Emoji", "Segoe UI Emoji", sans-serif';
+    ctx.fillText(site.relic || '·', cx, cy + 14);
+    ctx.font = `600 13px ${bFont}`;
+    ctx.fillStyle = '#2b2620';
+    ctx.fillText(String(site.num), cx, cy + 52);
+  });
+  ctx.fillStyle = '#a8341f';
+  ctx.font = `700 22px ${kFont}`;
+  ctx.fillText('열네 곳을 모두 걸었습니다', W / 2, 560);
+  ctx.fillStyle = '#5a5142';
+  ctx.font = `italic 16px ${bFont}`;
+  const line = '그가 원하지 않는 곳으로 끌려간 언덕까지,';
+  const line2 = '베드로의 참된 길을 끝까지 따라갔습니다.';
+  ctx.fillText(line, W / 2, 600);
+  ctx.fillText(line2, W / 2, 626);
+  ctx.font = `18px ${bFont}`;
+  ctx.fillStyle = '#2b2620';
+  ctx.fillText('“내 양을 먹여라”  — 요한복음 21:17', W / 2, 700);
+  ctx.font = `14px ${bFont}`;
+  ctx.fillStyle = '#8a7f6a';
+  ctx.fillText('fishermans-chart.vercel.app', W / 2, H - 48);
+  return cv;
+}
+function buildSouvenir() {
+  const wrap = document.getElementById('souvenir-wrap');
+  if (wrap.dataset.built) return;
+  wrap.dataset.built = '1';
+  const cv = makeSouvenirCanvas();
+  const img = document.createElement('img');
+  img.id = 'souvenir-img';
+  img.alt = '어부의 지도 완주 기념 카드';
+  cv.toBlob((blob) => {
+    souvenirURL = URL.createObjectURL(blob);
+    img.src = souvenirURL;
+  }, 'image/png');
+  const btn = document.createElement('button');
+  btn.id = 'souvenir-btn';
+  btn.type = 'button';
+  btn.textContent = '기념 카드 저장 · 공유';
+  btn.addEventListener('click', async () => {
+    if (ghostClick()) return;
+    cv.toBlob(async (blob) => {
+      const file = new File([blob], 'fishermans-chart.png', { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try { await navigator.share({ files: [file], title: '어부의 지도' }); return; } catch { /* 취소/실패 시 다운로드로 */ }
+      }
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'fishermans-chart.png';
+      a.click();
+    }, 'image/png');
+  });
+  wrap.append(img, btn);
 }
 document.getElementById('epilogue-close').addEventListener('click', () => {
   if (ghostClick()) return;
@@ -1341,6 +1638,126 @@ function updateVoyage(dt) {
     voyageCaptionEl.style.opacity = '0';
     setTimeout(() => voyageCaptionEl.classList.add('hidden'), 900);
     toast('바다를 건넜습니다. 로마가 앞에 있습니다.');
+  }
+}
+
+/* ---------------- 빈 무덤 달음질 (요 20:3–8) ---------------- */
+// 무덤에 다가가면 요한이 앞질러 달려 어귀에 멈춰 서고, 베드로(플레이어)가 먼저 들어간다.
+let tombRun = null;
+let tombRunDone = false;
+const _tombFrom = new THREE.Vector3();
+function updateTombRace(dt, distTomb) {
+  const site8 = markerById['empty-tomb'];
+  // 발동: 무덤 18유닛 안, 아직 기록 전, 한 번만
+  if (!tombRun && !tombRunDone && site8 && !site8.visited && distTomb < 18 && distTomb > 7) {
+    tombRun = { t: 0, phase: 'run' };
+    tombRunDone = true;
+    _tombFrom.set(player.position.x, 0, player.position.z);
+    ghostJohn.position.copy(_tombFrom);
+    ghostJohn.visible = true;
+    toast('다른 제자가 너를 앞질러 달린다!');
+  }
+  if (!tombRun) return;
+  tombRun.t += dt;
+  if (tombRun.phase === 'run') {
+    const u = Math.min(1, tombRun.t / 1.6);
+    const e = u * u * (3 - 2 * u);
+    ghostJohn.position.set(
+      _tombFrom.x + (TOMB_MOUTH.x - _tombFrom.x) * e,
+      Math.abs(Math.sin(tombRun.t * 16)) * 0.18,
+      _tombFrom.z + (TOMB_MOUTH.z - _tombFrom.z) * e
+    );
+    ghostJohn.rotation.y = Math.atan2(TOMB_MOUTH.x - _tombFrom.x, TOMB_MOUTH.z - _tombFrom.z);
+    const sw = Math.sin(tombRun.t * 16) * 0.7;
+    ghostJohn.userData.legL.rotation.x = sw;
+    ghostJohn.userData.legR.rotation.x = -sw;
+    if (u >= 1) {
+      tombRun.phase = 'wait';
+      ghostJohn.userData.legL.rotation.x = ghostJohn.userData.legR.rotation.x = 0;
+      ghostJohn.rotation.x = 0.35; // 어귀에서 몸을 굽혀 들여다봄
+      toast('그가 어귀에서 멈춰 섰다 — 네가 먼저 들어가라.');
+    }
+  } else if (tombRun.phase === 'wait') {
+    ghostJohn.position.y = Math.sin(tombRun.t * 2) * 0.03;
+    if (site8.visited) { tombRun.phase = 'fade'; tombRun.t = 0; }
+  } else if (tombRun.phase === 'fade') {
+    const k = Math.min(1, tombRun.t / 1.2);
+    ghostJohn.traverse((o) => { if (o.material) o.material.opacity = 0.5 * (1 - k); });
+    if (k >= 1) { ghostJohn.visible = false; tombRun = null; }
+  }
+}
+
+/* ---------------- 물 위 걷기 (마 14:22–33) — 배를 타고 나가 물 위를 걷는다 ---------------- */
+const sinkVeil = document.getElementById('sink-veil');
+let waterWalk = null;
+const WW_BOARD_DUR = 5.5, WW_RETURN_DUR = 4;
+function startWaterWalk() {
+  if (state.view === 'chart') toggleView();
+  state.modal = true;
+  state.boardMode = false;
+  player.visible = false;
+  wwBoat.position.set(WW_BOARD.x, 0, WW_BOARD.z);
+  waterWalk = { phase: 'boarding', t: 0, from: { x: WW_BOARD.x, z: WW_BOARD.z } };
+  audio.play('windRush', { gain: 0.3 });
+  toast('배가 어둠 속으로 나아간다 — 새벽 네 시.');
+}
+function skipWaterWalk() {
+  if (waterWalk && waterWalk.phase === 'boarding' && waterWalk.t > 0.6) waterWalk.t = WW_BOARD_DUR;
+}
+function startWaterWalkReturn() {
+  waterWalkPath = null;
+  lightPath.visible = false;
+  lightPath.material.opacity = 0;
+  player.visible = false;
+  state.modal = true;
+  waterWalk.phase = 'return';
+  waterWalk.t = 0;
+}
+function updateWaterWalk(dt) {
+  const w = waterWalk;
+  w.t += dt;
+  if (w.phase === 'boarding') {
+    const u = Math.min(1, w.t / WW_BOARD_DUR);
+    const e = u * u * (3 - 2 * u);
+    const bx = w.from.x + (WW_DROP.x - w.from.x) * e;
+    const bz = w.from.z + (WW_DROP.z - w.from.z) * e;
+    wwBoat.position.set(bx, Math.sin(w.t * 1.4) * 0.12, bz);
+    wwBoat.rotation.y = Math.atan2(WW_DROP.x - w.from.x, WW_DROP.z - w.from.z);
+    player.position.set(bx, 0, bz);
+    applyWarmth(0.85 - 0.78 * e); // 아침 → 새벽 어스름
+    if (u >= 1) {
+      w.phase = 'walk';
+      waterWalkPath = { a: [WW_DROP.x, WW_DROP.z], b: [WW_MARKER.x, WW_MARKER.z], width: 6 };
+      lightPath.visible = true;
+      waterWalkSink = 0;
+      player.visible = true;
+      player.position.set(WW_DROP.x, 0, WW_DROP.z);
+      player.rotation.y = Math.atan2(WW_MARKER.x - WW_DROP.x, WW_MARKER.z - WW_DROP.z);
+      cam.yaw = Math.atan2(WW_DROP.x - WW_MARKER.x, WW_DROP.z - WW_MARKER.z); // 표지를 바라보게
+      state.modal = false;
+      toast('물 위로 걸어오라 — 빛의 길에서 눈을 떼지 말고, 멈추지 마라.');
+    }
+  } else if (w.phase === 'walk') {
+    lightPath.material.opacity = Math.min(0.8, lightPath.material.opacity + dt * 0.9);
+  } else if (w.phase === 'return') {
+    const u = Math.min(1, w.t / WW_RETURN_DUR);
+    const e = u * u * (3 - 2 * u);
+    const bx = WW_DROP.x + (WW_BOARD.x - WW_DROP.x) * e;
+    const bz = WW_DROP.z + (WW_BOARD.z - WW_DROP.z) * e;
+    wwBoat.position.set(bx, Math.sin(w.t * 1.4) * 0.12, bz);
+    wwBoat.rotation.y = Math.atan2(WW_BOARD.x - WW_DROP.x, WW_BOARD.z - WW_DROP.z);
+    player.position.set(bx, 0, bz);
+    applyWarmth(0.07 + 0.78 * e);
+    if (u >= 1) {
+      waterWalk = null;
+      player.visible = true;
+      player.position.set(WW_BOARD.x, 0, WW_BOARD.z);
+      wwBoat.position.set(WW_BOARD.x, 0, WW_BOARD.z);
+      wwBoat.rotation.y = Math.PI * 0.75;
+      sinkVeil.style.opacity = '0';
+      state.modal = false;
+      toast('다시 물가로 돌아왔다.');
+    }
   }
 }
 
@@ -1437,6 +1854,22 @@ function collide(px, pz) {
   return [px, pz];
 }
 
+// 골고다는 "멀찍이서" 봐야 한다 (눅 23:49) — 십자가에 다가가면 밀려나고 토스트가 뜬다.
+// 7번 표지(성벽 위 -20,115)는 이 원 바깥이라 거기서만 기록된다.
+const CROSS = { x: -40, z: 116, r: 10 };
+let crossToastAt = -99;
+function keepAwayFromCross(x, z) {
+  if (markerById['at-a-distance'] && markerById['at-a-distance'].visited) return [x, z];
+  const dx = x - CROSS.x, dz = z - CROSS.z;
+  const d = Math.hypot(dx, dz);
+  if (d >= CROSS.r || d < 0.001) return [x, z];
+  if (clock.elapsedTime - crossToastAt > 5) {
+    crossToastAt = clock.elapsedTime;
+    toast('그는 멀찍이서 보았다 — 더 가까이 갈 수 없다. 성벽에서 지켜보라.');
+  }
+  return [CROSS.x + (dx / d) * CROSS.r, CROSS.z + (dz / d) * CROSS.r];
+}
+
 function angleLerp(a, b, t) {
   let d = (b - a) % (Math.PI * 2);
   if (d > Math.PI) d -= Math.PI * 2;
@@ -1452,43 +1885,49 @@ function animate() {
   const effYaw = state.view === 'chart' ? 0 : cam.yaw;
   const fwdX = -Math.sin(effYaw), fwdZ = -Math.cos(effYaw);
   const rightX = Math.cos(effYaw), rightZ = -Math.sin(effYaw);
-  let moving = 0, dirX = 0, dirZ = 0;
+  let moving = 0, dirX = 0, dirZ = 0, running = false;
   if (state.started && !state.modal && !voyage && !finale) {
     const [mx, mz] = moveInput();
     moving = Math.hypot(mx, mz);
+    // 달리기: Shift(키보드) 또는 조이스틱을 끝까지 밀면 1.8배
+    running = moving > 0.01 && (keys.ShiftLeft || keys.ShiftRight
+      || (joy.id !== null && Math.hypot(joy.dx, joy.dy) > 0.9));
+    const spd = SPEED * (running ? 1.8 : 1);
     if (moving > 0.01) {
       dirX = rightX * mx + fwdX * -mz;
       dirZ = rightZ * mx + fwdZ * -mz;
-      let nx = player.position.x + dirX * SPEED * dt;
-      let nz = player.position.z + dirZ * SPEED * dt;
+      let nx = player.position.x + dirX * spd * dt;
+      let nz = player.position.z + dirZ * spd * dt;
       if (!isWalkable(nx, player.position.z)) nx = player.position.x;
       if (!isWalkable(nx, nz)) nz = player.position.z;
       [nx, nz] = collide(nx, nz);
+      [nx, nz] = keepAwayFromCross(nx, nz);
       if (isWalkable(nx, nz)) player.position.set(nx, player.position.y, nz);
       player.rotation.y = angleLerp(player.rotation.y, Math.atan2(dirX, dirZ), 0.2);
     }
   }
-  walkPhase += dt * (4 + moving * 9);
+  walkPhase += dt * (4 + moving * 9) * (running ? 1.5 : 1);
   const swing = moving > 0.01 ? 0.62 : 0;
   legL.rotation.x = Math.sin(walkPhase) * swing;
   legR.rotation.x = -Math.sin(walkPhase) * swing;
 
-  // walking on the water: out past the lake's true shore, the surface
-  // bears him up — but faltering there, wind-fearing, he sinks a little
-  const overLake = !onHolyLand(player.position.x, player.position.z)
-    && pointInPoly(player.position.x, player.position.z, LAKE);
+  // 물 위 걷기(3번): 빛의 길 위에서만 발동. 멈추면 바람을 무서워하듯 가라앉는다.
+  // 카드가 열려 있을 때(모달)는 가라앉지 않는다.
+  const overLake = waterWalk && waterWalk.phase === 'walk' && !state.modal;
   if (overLake) {
-    const sinkGoal = moving > 0.01 ? 0 : 0.28;
-    waterWalkSink += (sinkGoal - waterWalkSink) * Math.min(1, dt * 1.4);
-    if (sinkGoal > 0 && waterWalkSink > 0.12 && !windTriggeredSink) {
+    const sinkGoal = moving > 0.01 ? 0 : 0.5;
+    waterWalkSink += (sinkGoal - waterWalkSink) * Math.min(1, dt * 1.6);
+    if (sinkGoal > 0 && waterWalkSink > 0.15 && !windTriggeredSink) {
       windTriggeredSink = true;
-      toast('맞바람이 분다 — 멈추지 말고 계속 걸어라.');
+      toast('바람을 보고 무서워 가라앉기 시작한다 — 멈추지 말고 걸어라!');
     }
     if (sinkGoal === 0) windTriggeredSink = false;
   } else {
     waterWalkSink += (0 - waterWalkSink) * Math.min(1, dt * 2);
   }
   player.position.y = (moving > 0.01 ? Math.abs(Math.sin(walkPhase)) * 0.1 : 0) - waterWalkSink;
+  // 가라앉을수록 화면 가장자리가 어두워진다
+  if (sinkVeil) sinkVeil.style.opacity = String(Math.min(0.72, waterWalkSink * 1.4));
 
   const stepSign = Math.sin(walkPhase) >= 0;
   if (moving > 0.01 && stepSign !== lastStepSign) {
@@ -1502,6 +1941,7 @@ function animate() {
     startFinale();
   }
   if (voyage) updateVoyage(dt);
+  if (waterWalk) updateWaterWalk(dt);
   if (finale) updateFinale(dt);
 
   if (finale) {
@@ -1548,20 +1988,32 @@ function animate() {
   sun.position.set(player.position.x + 70, 100, player.position.z + 45);
   sun.target.position.set(player.position.x, 0, player.position.z);
 
-  if (!finale) applyWarmth(regionWarmth(player.position.x, player.position.z));
+  if (!finale && !waterWalk) applyWarmth(regionWarmth(player.position.x, player.position.z));
 
-  let near = null, nearD = 8, target = null, targetD = Infinity;
+  // near = 방문 프롬프트용 가장 가까운 표지 / target = 나침반용, 이야기 순서(번호) 다음 미방문지
+  let near = null, nearD = 8, target = null, targetNum = Infinity;
   for (const m of markers) {
     const d = Math.hypot(player.position.x - m.site.pos.x, player.position.z - m.site.pos.z);
     if (d < nearD) { near = m; nearD = d; }
-    if (!m.visited && d < targetD) { target = m; targetD = d; }
+    if (!m.visited && m.site.num < targetNum) { target = m; targetNum = m.site.num; }
   }
   state.nearSite = near;
 
-  const promptOn = !!near && state.started && !state.modal && !voyage && !finale;
+  if (state.started && !finale && !voyage) {
+    const dt8 = Math.hypot(player.position.x - markerById['empty-tomb'].site.pos.x, player.position.z - markerById['empty-tomb'].site.pos.z);
+    updateTombRace(dt, dt8);
+  }
+
+  // 배에 오르기 프롬프트: 물 위 걷기 배 근처, 물 위 걷기 중이 아닐 때
+  const distBoard = Math.hypot(player.position.x - WW_BOARD.x, player.position.z - WW_BOARD.z);
+  const boardOn = state.started && !state.modal && !voyage && !finale && !waterWalk && distBoard < 6.5;
+  state.boardMode = boardOn;
+  const promptOn = boardOn || (!!near && state.started && !state.modal && !voyage && !finale);
   visitBtn.classList.toggle('hidden', !promptOn);
   if (promptOn) {
-    const label = `${near.shortTitle} ${near.visited ? '다시 방문' : '방문'}`;
+    const label = boardOn
+      ? (markerById['fourth-watch'].visited ? '⚓ 다시 배로 나가기' : '⚓ 배에 오르기')
+      : `${near.shortTitle} ${near.visited ? '다시 방문' : '방문'}`;
     if (visitLabel.textContent !== label) visitLabel.textContent = label;
     if (!visitPulsed) {
       visitPulsed = true;
@@ -1658,6 +2110,51 @@ function animate() {
   sPos.needsUpdate = true;
   nightBoat.position.y = Math.sin(t * 0.9) * 0.05;
   shoreBoat.position.y = Math.sin(t * 0.9 + 2) * 0.05;
+  if (!waterWalk) wwBoat.position.y = Math.sin(t * 0.9 + 1) * 0.05;
+
+  // 양 떼: 제자리에서 살랑살랑 풀을 뜯고, 이따금 몇 걸음 옮긴다
+  for (const s of sheep) {
+    s.t -= dt;
+    if (s.t <= 0) { s.t = 2 + Math.random() * 4; s.dir = Math.random() * Math.PI * 2; }
+    const nx = s.g.position.x + Math.cos(s.dir) * dt * 0.4;
+    const nz = s.g.position.z + Math.sin(s.dir) * dt * 0.4;
+    if (onHolyLand(nx, nz) && Math.hypot(nx - s.hx, nz - s.hz) < 6) {
+      s.g.position.x = nx; s.g.position.z = nz;
+      s.g.rotation.y = -s.dir + Math.PI / 2;
+    }
+    s.g.position.y = Math.abs(Math.sin(t * 1.5 + s.ph)) * 0.03;
+  }
+
+  // 호수의 배: 남북으로 오가며 끝에서 방향을 튼다
+  for (const b of lakeBoats) {
+    b.g.position.z += b.dir * b.speed * dt;
+    if (b.g.position.z < b.z0) { b.g.position.z = b.z0; b.dir = 1; b.g.rotation.y = 0; }
+    if (b.g.position.z > b.z1) { b.g.position.z = b.z1; b.dir = -1; b.g.rotation.y = Math.PI; }
+    b.g.position.y = Math.sin(t * 0.8 + b.ph) * 0.06;
+  }
+
+  // 성벽 횃불: 불꽃이 흔들린다
+  for (const f of torches) {
+    const k = 0.8 + Math.sin(t * 13 + f.position.x) * 0.2;
+    f.scale.set(k, 0.9 + Math.sin(t * 17 + f.position.z) * 0.2, k);
+  }
+
+  // 낙타 대상: 남쪽 요단 길을 느릿느릿 순회
+  caravan.u = (caravan.u + dt * 0.012) % 1;
+  const cp = caravan.path;
+  const sampleCaravan = (u) => {
+    const seg = u * (cp.length - 1);
+    const i = Math.min(cp.length - 2, Math.floor(seg));
+    const f = seg - i;
+    return [cp[i][0] + (cp[i + 1][0] - cp[i][0]) * f, cp[i][1] + (cp[i + 1][1] - cp[i][1]) * f];
+  };
+  for (const c of caravan.camels) {
+    const cu = Math.max(0, caravan.u - c.lag);
+    const [px, pz] = sampleCaravan(cu);
+    const [ax, az] = sampleCaravan(Math.min(1, cu + 0.01));
+    c.g.position.set(px, Math.abs(Math.sin(t * 3 + c.lag * 20)) * 0.04, pz);
+    c.g.rotation.y = Math.atan2(ax - px, az - pz);
+  }
 
   for (const gl of gulls) {
     gl.a += dt * gl.s;
