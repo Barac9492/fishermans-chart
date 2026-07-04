@@ -1663,7 +1663,16 @@ function handleTap(cx, cy) {
     }
   }
   const hits = tapRay.intersectObjects(tapTargets, false);
-  if (hits.length) openLandmarkCard(hits[0].object.userData.landmark);
+  if (hits.length) {
+    const ud = hits[0].object.userData;
+    if (ud.roosterToy) { // 뜰의 수탉: 탭하면 운다 — 몇 번이고
+      audio.play('rooster', { gain: 0.18 });
+      buzz(12);
+      roosterHopT = 0;
+      return;
+    }
+    openLandmarkCard(ud.landmark);
+  }
 }
 
 let modalOpenedAt = 0;
@@ -1726,6 +1735,7 @@ function chartSite(marker, { silent = false } = {}) {
   } else {
     pendingPinFx = marker;
     audio.play('chime');
+    buzz([25, 30, 60]);
   }
 }
 
@@ -1806,6 +1816,7 @@ document.getElementById('card-close').addEventListener('click', () => {
       fromE: pendingPinFx.pinMat.emissive.clone(),
     });
     audio.play('bell');
+    goldBurst(pendingPinFx.site.pos.x, pendingPinFx.site.pos.z, 4); // 기록의 불꽃
     pendingPinFx = null;
   }
   if (waterWalk && (waterWalk.phase === 'walk' || waterWalk.phase === 'arrived')) {
@@ -2317,7 +2328,7 @@ function dialogHoldButton(label, ms, onDone) {
       if (start === null || fired) return;
       const k = Math.min(1, (performance.now() - start) / ms);
       fill.style.width = `${k * 100}%`;
-      if (k >= 1) { fired = true; clearInterval(timer); onDone(); }
+      if (k >= 1) { fired = true; clearInterval(timer); buzz(18); onDone(); }
     }, 30);
   });
   b.addEventListener('pointerup', cancel);
@@ -2736,6 +2747,8 @@ function collectSheep(s) {
   s.found = true;
   s.fadeT = 0;
   audio.play('bleat', { gain: 0.22 });
+  goldBurst(s.x, s.z, 1);
+  buzz(30);
   if (!save.sheep.includes(s.i)) {
     save.sheep.push(s.i);
     persistSave();
@@ -2744,7 +2757,10 @@ function collectSheep(s) {
   const n = save.sheep.length;
   toast(`🐑 ${LOST_SHEEP_LINES[s.i]} — 찾은 양 ${n} / 12`, 6500);
   if (n === 12) {
-    setTimeout(() => toast('🐑 잃은 양 열두 마리를 모두 찾았어요 — 목자의 마음을 걸어서 배웠어요!', 8000), 6800);
+    setTimeout(() => {
+      toast('🐑 잃은 양 열두 마리를 모두 찾았어요 — 목자의 마음을 걸어서 배웠어요!', 8000);
+      spawnPetLamb();
+    }, 6800);
   }
 }
 function updateLostSheep(dt, t) {
@@ -2866,6 +2882,174 @@ function updateShepherdBubble(dt) {
   const d = Math.hypot(player.position.x - shepherdG.position.x, player.position.z - shepherdG.position.z);
   const target = d < 15 && !state.modal ? 0.95 : 0;
   shepherdBubble.material.opacity += (target - shepherdBubble.material.opacity) * Math.min(1, dt * 4);
+}
+
+/* ---------------- 작은 기쁨들: 새끼 양 · 요나의 물고기 · 수탉 · 불꽃 · 진동 ---------------- */
+
+// 손끝의 반응 (안드로이드 크롬 등에서만; 없으면 조용히 무시)
+function buzz(pattern) {
+  try { if (navigator.vibrate) navigator.vibrate(pattern); } catch { /* 미지원 */ }
+}
+
+// 금빛 불꽃: 기록·수집의 순간이 손에 잡히게
+const sparks = [];
+const sparkTex = (() => {
+  const [cv, c] = canvas2d(32, 32);
+  const g = c.createRadialGradient(16, 16, 0, 16, 16, 16);
+  g.addColorStop(0, 'rgba(255,224,130,1)');
+  g.addColorStop(0.5, 'rgba(230,180,60,0.6)');
+  g.addColorStop(1, 'rgba(230,180,60,0)');
+  c.fillStyle = g;
+  c.fillRect(0, 0, 32, 32);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+})();
+function goldBurst(x, z, y = 3) {
+  for (let i = 0; i < 12; i++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: sparkTex, transparent: true, depthWrite: false, opacity: 0.95 }));
+    sp.scale.setScalar(0.5 + Math.random() * 0.5);
+    sp.position.set(x, y, z);
+    scene.add(sp);
+    const a = Math.random() * Math.PI * 2;
+    sparks.push({ sp, t: -i * 0.02, vx: Math.cos(a) * (0.8 + Math.random()), vz: Math.sin(a) * (0.8 + Math.random()), vy: 2.2 + Math.random() * 2 });
+  }
+}
+function updateSparks(dt) {
+  for (let i = sparks.length - 1; i >= 0; i--) {
+    const s = sparks[i];
+    s.t += dt;
+    if (s.t < 0) continue;
+    const k = s.t / 1.1;
+    if (k >= 1) { scene.remove(s.sp); sparks.splice(i, 1); continue; }
+    s.sp.position.x += s.vx * dt;
+    s.sp.position.z += s.vz * dt;
+    s.sp.position.y += (s.vy - s.t * 4.5) * dt;
+    s.sp.material.opacity = 0.95 * (1 - k);
+  }
+}
+
+// 뜰의 수탉: 몇 번을 탭해도 성실하게 울어 주는 장난감 (6번 곁)
+let roosterHopT = 1;
+const roosterG = (() => {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.ConeGeometry(0.34, 0.8, 8), lambert(0x6e4a35));
+  body.position.y = 0.5;
+  body.rotation.x = -0.4;
+  body.castShadow = true;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 7), lambert(0x7e5540));
+  head.position.set(0, 0.95, 0.22);
+  const comb = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.18, 0.2), lambert(0xb0301f));
+  comb.position.set(0, 1.13, 0.2);
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.55, 6), lambert(0x2e4034));
+  tail.position.set(0, 0.78, -0.34);
+  tail.rotation.x = 0.9;
+  g.add(body, head, comb, tail);
+  g.position.set(13, 0, 116.5);
+  g.rotation.y = -0.7;
+  scene.add(g);
+  const hit = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2, 1.6), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }));
+  hit.position.set(13, 1, 116.5);
+  hit.userData.roosterToy = true;
+  scene.add(hit);
+  tapTargets.push(hit);
+  return g;
+})();
+
+// 요나의 큰 물고기: 지중해를 떠돌다 이따금 떠오른다 — 발견한 사람만 아는 비밀
+const jonahG = (() => {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshLambertMaterial({ color: 0x3d4c58, flatShading: true });
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8), mat);
+  body.scale.set(4.2, 1.4, 1.7);
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(1, 1.8, 4), mat);
+  tail.position.set(-4.6, 0.3, 0);
+  tail.rotation.z = Math.PI / 2;
+  const fin = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1, 4), mat);
+  fin.position.set(0.4, 1.2, 0);
+  g.add(body, tail, fin);
+  body.userData.landmark = {
+    name: '큰 물고기…?',
+    blurb: `요나를 사흘 동안 품었던 그 물고기일 리는… 없겠지만, 갈릴리 어부들은
+      이런 농담을 즐겼을 것이다. 예수께서 시몬을 부르실 때 "시몬 바요나야"라
+      하셨다 — <em>요나의 아들 시몬</em>이라는 뜻이다. (마 16:17) 물고기 배 속에서
+      사흘을 보내고 살아 나온 요나처럼, 예수께서도 사흘 만에 — 그 이야기의
+      끝은, 이미 걸어서 알고 있을 것이다. 이 물고기를 찾아낸 것은 비밀로 해도
+      좋다.`,
+  };
+  tapTargets.push(body);
+  g.position.set(-120, -4, 70);
+  scene.add(g);
+  return g;
+})();
+const jonah = { state: 'under', t: 0, x: -120, z: 70, tx: -90, tz: 80 };
+const JONAH_HAUNTS = [[-90, 80], [-140, 60], [-110, 110], [-75, 75], [-160, 95]];
+function updateJonah(dt, t) {
+  jonah.t -= dt;
+  if (jonah.state === 'under') {
+    // 물밑에서 다음 자리로 헤엄쳐 간다
+    const dx = jonah.tx - jonah.x, dz = jonah.tz - jonah.z;
+    const d = Math.hypot(dx, dz);
+    if (d > 1) {
+      jonah.x += (dx / d) * 3 * dt;
+      jonah.z += (dz / d) * 3 * dt;
+      jonahG.rotation.y = Math.atan2(dx, dz) - Math.PI / 2; // 머리가 진행 방향을 향하게
+    } else if (jonah.t <= 0) {
+      jonah.state = 'up';
+      jonah.t = 7; // 7초 동안 수면에
+      splashAt(jonah.x, jonah.z, true);
+    }
+  } else {
+    if (jonah.t <= 0) {
+      jonah.state = 'under';
+      jonah.t = 14 + Math.random() * 14;
+      const [nx, nz] = JONAH_HAUNTS[Math.floor(Math.random() * JONAH_HAUNTS.length)];
+      jonah.tx = nx; jonah.tz = nz;
+      splashAt(jonah.x, jonah.z, true);
+    }
+  }
+  const targetY = jonah.state === 'up' ? -0.4 : -4.2;
+  jonahG.position.x = jonah.x;
+  jonahG.position.z = jonah.z;
+  jonahG.position.y += (targetY - jonahG.position.y) * Math.min(1, dt * 1.6);
+  if (jonah.state === 'up') jonahG.position.y += Math.sin(t * 1.1) * 0.02;
+}
+
+// 새끼 양: 잃은 양 열두 마리를 다 찾은 사람에게, 평생의 동행
+let petLamb = null;
+function spawnPetLamb(quiet = false) {
+  if (petLamb) return;
+  const g = makeSheep(player.position.x - 1.6, player.position.z - 1.6);
+  g.scale.setScalar(0.42); // 새끼
+  const band = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.14, 0.56), lambert(0xb8902e)); // 금색 끈
+  band.position.set(0, 0.82, 0.34);
+  g.add(band);
+  petLamb = { g, hop: 0 };
+  if (!quiet) {
+    toast('🐑 새끼 양 한 마리가 곁을 떠나지 않기로 했어요 — 목자의 상.', 6500);
+    goldBurst(g.position.x, g.position.z, 1.2);
+    buzz([30, 40, 80]);
+  }
+}
+function updatePetLamb(dt, t) {
+  if (!petLamb) return;
+  const g = petLamb.g;
+  const dx = player.position.x - g.position.x, dz = player.position.z - g.position.z;
+  const d = Math.hypot(dx, dz);
+  if (d > 40) { // 항해·순간이동을 놓치면 곁으로 폴짝
+    g.position.set(player.position.x - 1.5, 0, player.position.z - 1.5);
+    return;
+  }
+  if (d > 2.1) {
+    const sp = Math.min(9, 3 + d);
+    g.position.x += (dx / d) * sp * dt;
+    g.position.z += (dz / d) * sp * dt;
+    g.rotation.y = Math.atan2(dx, dz);
+    petLamb.hop += dt * 11;
+    g.position.y = Math.abs(Math.sin(petLamb.hop)) * 0.25;
+  } else {
+    g.position.y = Math.abs(Math.sin(t * 1.6)) * 0.03; // 곁에서 숨쉬기
+  }
 }
 
 // ---- 오순절(12번): 바람 · 불의 혀 · 일어서서 외치다 ----
@@ -3581,6 +3765,11 @@ function animate() {
   updateLostSheep(dt, t);
   updateTalkers(dt);
   updateShepherdBubble(dt);
+  updateSparks(dt);
+  updateJonah(dt, t);
+  updatePetLamb(dt, t);
+  roosterHopT += dt;
+  roosterG.position.y = roosterHopT < 0.45 ? Math.abs(Math.sin(roosterHopT * 16)) * 0.3 : 0;
 
   // 호수의 물고기가 이따금 뛴다 (호수 근처에 있을 때만)
   ambientFishTimer -= dt;
@@ -3683,6 +3872,7 @@ if (save.epilogueShown) {
 for (const i of save.sheep) {
   if (lostSheep[i]) { lostSheep[i].found = true; lostSheep[i].g.visible = false; }
 }
+if (save.sheep.length >= 12) spawnPetLamb(true); // 목자의 상은 세션을 건너 이어진다
 updateSheepChip();
 updateNextHint();
 
