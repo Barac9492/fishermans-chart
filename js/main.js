@@ -1782,7 +1782,7 @@ document.getElementById('card-close').addEventListener('click', () => {
     audio.play('bell');
     pendingPinFx = null;
   }
-  if (waterWalk && waterWalk.phase === 'walk') {
+  if (waterWalk && (waterWalk.phase === 'walk' || waterWalk.phase === 'arrived')) {
     // 물 위 걷기 중 3번 카드를 닫으면 배가 물가로 데려다 준다
     startWaterWalkReturn();
   } else if (pendingVoyage) {
@@ -2010,7 +2010,58 @@ function updateTombRace(dt, distTomb) {
   }
 }
 
-/* ---------------- 물 위 걷기 (마 14:22–33) — 배를 타고 나가 물 위를 걷는다 ---------------- */
+/* ---------------- 빛의 형상 ----------------
+   예수님은 이목구비 없이, 사람 크기의 빛으로만 선다 —
+   "너희가 그를 보지 못하였으나 사랑하는도다" (벧전 1:8).
+   임재가 장면의 핵심인 두 곳: 물 위(3번)와 새벽 바닷가(10·11번). */
+function makeLightFigure() {
+  const g = new THREE.Group();
+  const mat = new THREE.MeshBasicMaterial({ color: 0xfff3d8, transparent: true, opacity: 0.92, fog: false });
+  const robe = new THREE.Mesh(new THREE.ConeGeometry(0.5, 2.1, 10), mat);
+  robe.position.y = 1.05;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), mat);
+  head.position.y = 2.32;
+  const glow = radialSprite([[0, 'rgba(255,244,214,0.7)'], [0.4, 'rgba(255,240,200,0.22)'], [1, 'rgba(255,240,200,0)']]);
+  glow.material.opacity = 0.75;
+  glow.scale.setScalar(6.5);
+  glow.position.y = 1.4;
+  g.add(robe, head, glow);
+  g.userData.glow = glow;
+  g.visible = false;
+  scene.add(g);
+  return g;
+}
+const wwFigure = makeLightFigure();    // 물 위 — 빛의 길 끝에 서 계신다
+const shoreFigure = makeLightFigure(); // 새벽 바닷가 — 숯불 곁에 서 계신다
+shoreFigure.position.set(-30, 0, -142.5);
+// 붙잡으시는 손: 구원의 순간에만 보이는 빛줄기
+const rescueBeam = new THREE.Mesh(
+  new THREE.CylinderGeometry(0.06, 0.06, 1, 6),
+  new THREE.MeshBasicMaterial({ color: 0xfff0c0, transparent: true, opacity: 0.85, fog: false })
+);
+rescueBeam.visible = false;
+scene.add(rescueBeam);
+const _beamDir = new THREE.Vector3();
+function aimBeam(ax, ay, az, bx, by, bz) {
+  _beamDir.set(bx - ax, by - ay, bz - az);
+  const len = _beamDir.length();
+  rescueBeam.position.set((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2);
+  rescueBeam.scale.set(1, len, 1);
+  rescueBeam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), _beamDir.normalize());
+}
+function showCaption(text) {
+  voyageCaptionEl.textContent = text;
+  voyageCaptionEl.classList.remove('hidden');
+  voyageCaptionEl.style.opacity = '1';
+}
+function hideCaption() {
+  voyageCaptionEl.style.opacity = '0';
+  setTimeout(() => voyageCaptionEl.classList.add('hidden'), 800);
+}
+
+/* ---------------- 물 위 걷기 (마 14:22–33) — 배를 타고 나가 물 위를 걷는다 ----------------
+   그분을 향해 걷는다. 돌풍이 옆으로 밀고 빛의 길이 흔들리다가,
+   베드로가 실제로 그랬듯 반드시 가라앉는다 — 그리고 반드시 붙잡힌다. */
 const sinkVeil = document.getElementById('sink-veil');
 let waterWalk = null;
 const WW_BOARD_DUR = 5.5, WW_RETURN_DUR = 4;
@@ -2031,6 +2082,8 @@ function startWaterWalkReturn() {
   waterWalkPath = null;
   lightPath.visible = false;
   lightPath.material.opacity = 0;
+  wwFigure.visible = false;
+  rescueBeam.visible = false;
   player.visible = false;
   state.modal = true;
   waterWalk.phase = 'return';
@@ -2056,12 +2109,72 @@ function updateWaterWalk(dt) {
       player.visible = true;
       player.position.set(WW_DROP.x, 0, WW_DROP.z);
       player.rotation.y = Math.atan2(WW_MARKER.x - WW_DROP.x, WW_MARKER.z - WW_DROP.z);
-      cam.yaw = Math.atan2(WW_DROP.x - WW_MARKER.x, WW_DROP.z - WW_MARKER.z); // 표지를 바라보게
+      cam.yaw = Math.atan2(WW_DROP.x - WW_MARKER.x, WW_DROP.z - WW_MARKER.z); // 그분을 바라보게
       state.modal = false;
-      toast('물 위로 걸어오라 — 빛의 길에서 눈을 떼지 말고, 멈추지 마라.');
+      // 빛의 길 끝에 그분이 서 계신다
+      wwFigure.position.set(WW_MARKER.x, 0, WW_MARKER.z);
+      wwFigure.visible = true;
+      showCaption('"오라." (마 14:29)');
+      setTimeout(hideCaption, 3000);
+      toast('그분을 향해 걸어라 — 멈추면 가라앉는다.');
     }
   } else if (w.phase === 'walk') {
     lightPath.material.opacity = Math.min(0.8, lightPath.material.opacity + dt * 0.9);
+    // 돌풍: 옆으로 밀어붙이고, 빛의 길이 흔들린다
+    w.gustT = (w.gustT ?? 2.4) - dt;
+    if (w.gustT <= 0) {
+      w.gustT = 2.4 + Math.random() * 2.2;
+      w.gustDur = 1.15;
+      w.gustDir = Math.random() < 0.5 ? -1 : 1;
+      audio.play('windRush', { gain: 0.15 });
+    }
+    if (w.gustDur > 0) {
+      w.gustDur -= dt;
+      const ddx = WW_MARKER.x - WW_DROP.x, ddz = WW_MARKER.z - WW_DROP.z;
+      const L = Math.hypot(ddx, ddz);
+      const nx = player.position.x + (-ddz / L) * w.gustDir * 1.7 * dt;
+      const nz = player.position.z + (ddx / L) * w.gustDir * 1.7 * dt;
+      if (onWalkLine(nx, nz)) { player.position.x = nx; player.position.z = nz; }
+      lightPath.material.opacity = Math.max(0.32, lightPath.material.opacity - dt * 1.3);
+    }
+    // 각본된 비틀거림: 베드로는 실제로 가라앉았다 (마 14:30)
+    const total = Math.hypot(WW_MARKER.x - WW_DROP.x, WW_MARKER.z - WW_DROP.z);
+    const prog = 1 - Math.hypot(player.position.x - WW_MARKER.x, player.position.z - WW_MARKER.z) / total;
+    if (prog > 0.55) {
+      w.phase = 'stumble';
+      w.t = 0;
+      state.modal = true;
+      audio.play('windRush', { gain: 0.4 });
+      audio.play('splash', { gain: 0.35 });
+      showCaption('바람을 보고, 무서워졌다 — 가라앉기 시작한다!');
+    }
+  } else if (w.phase === 'stumble') {
+    waterWalkSink = Math.min(1.15, waterWalkSink + dt * 0.85);
+    if (w.t > 1.7 && !w.cried) {
+      w.cried = true;
+      showCaption('"주님, 살려 주십시오!" (마 14:30)');
+    }
+    if (w.t > 3.1) {
+      w.phase = 'rescue';
+      w.t = 0;
+      rescueBeam.visible = true;
+      showCaption('예수께서 곧 손을 내밀어 붙잡으셨다 — "믿음이 작은 사람아, 왜 의심하였느냐."');
+    }
+  } else if (w.phase === 'rescue') {
+    // 빛의 손에 붙들려, 그분 곁까지
+    waterWalkSink = Math.max(0, waterWalkSink - dt * 1.1);
+    aimBeam(wwFigure.position.x, 1.5, wwFigure.position.z, player.position.x, 0.9 - waterWalkSink, player.position.z);
+    const dx = WW_MARKER.x - player.position.x, dz = WW_MARKER.z - player.position.z;
+    const d = Math.hypot(dx, dz);
+    if (d > 2.2) {
+      player.position.x += (dx / d) * 5.5 * dt;
+      player.position.z += (dz / d) * 5.5 * dt;
+    } else if (w.t > 0.8) {
+      w.phase = 'arrived';
+      rescueBeam.visible = false;
+      hideCaption();
+      openCard(markerById['fourth-watch']);
+    }
   } else if (w.phase === 'return') {
     const u = Math.min(1, w.t / WW_RETURN_DUR);
     const e = u * u * (3 - 2 * u);
@@ -2942,7 +3055,8 @@ function animate() {
       toast('바람을 보고 무서워 가라앉기 시작한다 — 멈추지 말고 걸어라!');
     }
     if (sinkGoal === 0) windTriggeredSink = false;
-  } else {
+  } else if (!(waterWalk && (waterWalk.phase === 'stumble' || waterWalk.phase === 'rescue'))) {
+    // 각본된 침몰·구원 중에는 updateWaterWalk가 직접 깊이를 다룬다
     waterWalkSink += (0 - waterWalkSink) * Math.min(1, dt * 2);
   }
   player.position.y = (moving > 0.01 ? Math.abs(Math.sin(walkPhase)) * 0.1 : 0) - waterWalkSink;
@@ -3182,6 +3296,14 @@ function animate() {
   // 붉은 깃발은 3번이 "지금 갈 차례"일 때만 걸린다 — 빨강은 늘 다음 목적지 하나만 가리킨다
   wwFlag.visible = target === markerById['fourth-watch'];
   if (wwFlag.visible) wwFlag.rotation.y = Math.sin(t * 2.2) * 0.5; // 펄럭임
+
+  // 새벽 바닷가의 형상: 긴 밤(9번)이 끝나면 숯불 곁에 서 계시고, 세 번의 물음(11번)까지 머문다
+  shoreFigure.visible = markerById['long-night'].visited && !markerById['three-questions'].visited;
+  for (const fig of [wwFigure, shoreFigure]) {
+    if (!fig.visible) continue;
+    fig.userData.glow.material.opacity = 0.62 + Math.sin(t * 1.7) * 0.14; // 숨쉬는 빛
+    fig.position.y = Math.sin(t * 1.1) * 0.06;
+  }
 
   // 양 떼: 제자리에서 살랑살랑 풀을 뜯고, 이따금 몇 걸음 옮긴다
   for (const s of sheep) {
