@@ -259,11 +259,12 @@ function groundLabel(text, x, z, rotY = 0, width = 40) {
   scene.add(mesh);
 }
 
-function makeNumberSprite(n) {
+// 번호 원판 스프라이트 재질 — 다음 목적지(빨강)·대기(회색)·다녀간 곳(먹색) 세 벌
+function numberSpriteMat(n, bg) {
   const [cv, ctx] = canvas2d(128, 128);
   ctx.beginPath();
   ctx.arc(64, 64, 52, 0, Math.PI * 2);
-  ctx.fillStyle = '#a8341f';
+  ctx.fillStyle = bg;
   ctx.fill();
   ctx.lineWidth = 6;
   ctx.strokeStyle = '#ece2c4';
@@ -275,9 +276,7 @@ function makeNumberSprite(n) {
   ctx.fillText(String(n), 64, 68);
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: true }));
-  sprite.scale.set(3.6, 3.6, 1);
-  return sprite;
+  return new THREE.SpriteMaterial({ map: tex, depthTest: true });
 }
 
 // Tappable flavor landmarks — a lighter cousin of numbered sites: a label,
@@ -827,7 +826,13 @@ const markers = SITES.map((site, i) => {
   const ball = new THREE.Mesh(new THREE.SphereGeometry(1.05, 14, 12), pinMat);
   ball.position.y = 4.05;
   ball.castShadow = true;
-  const sprite = makeNumberSprite(site.num);
+  const spriteMats = {
+    red: numberSpriteMat(site.num, '#a8341f'),
+    gray: numberSpriteMat(site.num, '#8b8478'),
+    ink: numberSpriteMat(site.num, '#3b352c'),
+  };
+  const sprite = new THREE.Sprite(spriteMats.gray);
+  sprite.scale.set(3.6, 3.6, 1);
   sprite.position.y = 6.6;
   const pin = new THREE.Group();
   pin.add(cone, ball);
@@ -837,7 +842,7 @@ const markers = SITES.map((site, i) => {
   return {
     site,
     shortTitle: site.title.split('—')[0].trim(),
-    g, pin, ring, sprite, pinMat, phase: i * 0.9, visited: false,
+    g, pin, ring, sprite, spriteMats, pinMat, phase: i * 0.9, visited: false, styleState: null,
   };
 });
 const markerById = {};
@@ -1227,7 +1232,7 @@ const voyageCaptionEl = document.getElementById('voyage-caption');
 const viewBtn = document.getElementById('view-btn');
 function toggleView() {
   if (state.view === 'street' && player.position.x < -150) {
-    toast('이 지도는 성지만 보여 줍니다. 로마는 그 너머, 바다 건너에 있습니다.');
+    toast('이 지도는 성지만 보여줘요 — 로마는 바다 건너에 있어요.');
     return;
   }
   state.view = state.view === 'street' ? 'chart' : 'street';
@@ -1282,7 +1287,7 @@ if (save.charted.length > 0) {
   document.getElementById('start-btn').textContent = '지도로 돌아가기';
   const note = document.createElement('p');
   note.className = 'save-note';
-  note.textContent = `${save.charted.length} / ${SITES.length} 곳 이미 기억됨 · `;
+  note.textContent = `${save.charted.length} / ${SITES.length} 곳 다녀감 · `;
   const reset = document.createElement('button');
   reset.type = 'button';
   reset.className = 'reset-link';
@@ -1322,15 +1327,15 @@ document.getElementById('start-btn').addEventListener('click', () => {
   audio.setMuted(save.muted);
   if (window.innerWidth < 700) document.getElementById('chart-key').removeAttribute('open');
   toast(save.charted.length > 0
-    ? '다시 바닷가에 섰습니다. 이미 찾은 곳은 지도가 기억하고 있습니다.'
-    : '당신은 갈릴리 바닷가에 서 있습니다. 바다 건너, 또 그 너머에 열네 개의 붉은 표지가 기다립니다 — 나침반이 가장 가까운 곳을 가리킵니다.');
+    ? '다시 바닷가예요. 이미 찾은 곳은 지도가 기억하고 있어요.'
+    : '갈릴리 바닷가에 섰어요. 붉게 빛나는 표지가 다음 이야기예요 — 나침반과 위의 「다음」 안내를 따라가요.');
   showTouchHint();
 });
 
 const muteBtn = document.getElementById('mute-btn');
 function reflectMute() {
   muteBtn.classList.toggle('muted', save.muted);
-  muteBtn.title = save.muted ? '소리가 꺼져 있습니다 — 탭하여 켜기' : '소리가 켜져 있습니다 — 탭하여 끄기';
+  muteBtn.title = save.muted ? '소리가 꺼져 있어요 — 탭하여 켜기' : '소리가 켜져 있어요 — 탭하여 끄기';
 }
 muteBtn.addEventListener('click', () => {
   save.muted = !save.muted;
@@ -1399,6 +1404,7 @@ function settlePin(m) {
   m.ring.material.color.set(COLORS.ink);
   m.ring.material.opacity = 0.4;
   m.ring.scale.setScalar(1);
+  m.sprite.material = m.spriteMats.ink;
   m.fxScale = 1;
 }
 
@@ -1413,18 +1419,36 @@ function chartSite(marker, { silent = false } = {}) {
   marker.visited = true;
   state.visitedCount++;
   document.getElementById(`key-${marker.site.id}`).classList.add('done');
-  progressEl.textContent = `${state.visitedCount} / ${SITES.length} 곳 기억됨`;
+  progressEl.textContent = `${state.visitedCount} / ${SITES.length} 곳 다녀감`;
   if (!save.charted.includes(marker.site.id)) {
     save.charted.push(marker.site.id);
     persistSave();
   }
   fillRelic(marker.site.id, { pop: !silent });
+  updateNextHint();
   if (silent) {
     settlePin(marker);
   } else {
     pendingPinFx = marker;
     audio.play('chime');
   }
+}
+
+// HUD의 「다음 →」 안내와 범례의 붉은 하이라이트를 이야기 순서에 맞춘다
+function updateNextHint() {
+  let nxt = null;
+  for (const m of markers) {
+    if (!m.visited && (!nxt || m.site.num < nxt.site.num)) nxt = m;
+  }
+  keyList.querySelectorAll('li.next').forEach((li) => li.classList.remove('next'));
+  const el = document.getElementById('next-hint');
+  if (!nxt) {
+    el.textContent = '열네 곳을 모두 걸었어요!';
+    return;
+  }
+  document.getElementById(`key-${nxt.site.id}`).classList.add('next');
+  el.textContent = `다음 → ${nxt.site.num}. ${nxt.shortTitle}`
+    + (nxt.site.id === 'fourth-watch' ? ' (물가의 배를 타요)' : '');
 }
 
 function openCard(marker) {
@@ -1451,8 +1475,8 @@ function openCard(marker) {
   cardArtifact.style.display = '';
   const firstVisit = !marker.visited;
   cardArtifact.innerHTML = firstVisit
-    ? `<b>간직함:</b> ${s.artifact} &nbsp;${s.relic || ''}`
-    : `<b>기억함:</b> ${s.artifact} &nbsp;${s.relic || ''}`;
+    ? `<b>보따리에 담았다</b> · ${s.artifact} &nbsp;${s.relic || ''}`
+    : `<b>이미 보따리에 있다</b> · ${s.artifact} &nbsp;${s.relic || ''}`;
   cardArtifact.classList.toggle('stamped', firstVisit);
   if (s.question) {
     cardQuestion.textContent = s.question.replace(/\s+/g, ' ').trim();
@@ -1470,7 +1494,12 @@ document.getElementById('card-close').addEventListener('click', () => {
   cardEl.classList.add('hidden');
   state.modal = false;
   if (pendingPinFx) {
-    pinFx.push({ m: pendingPinFx, t: 0 });
+    // 표지가 회색(대기) 상태에서 기록될 수도 있으니, 지금 색에서 먹색으로 저물게 한다
+    pinFx.push({
+      m: pendingPinFx, t: 0,
+      from: pendingPinFx.pinMat.color.clone(),
+      fromE: pendingPinFx.pinMat.emissive.clone(),
+    });
     audio.play('bell');
     pendingPinFx = null;
   }
@@ -1591,7 +1620,7 @@ document.getElementById('epilogue-close').addEventListener('click', () => {
   if (ghostClick()) return;
   epilogueEl.classList.add('hidden');
   state.modal = false;
-  toast('이제 이 지도는 당신의 것입니다. 어느 표지든 다시 찾으면 그 이야기를 다시 읽을 수 있습니다.');
+  toast('이제 지도를 자유롭게 걸어요. 어느 표지든 다시 찾으면 이야기를 또 읽을 수 있어요.');
 });
 
 /* ---------------- the voyage to Rome ---------------- */
@@ -1637,7 +1666,7 @@ function updateVoyage(dt) {
     state.modal = false;
     voyageCaptionEl.style.opacity = '0';
     setTimeout(() => voyageCaptionEl.classList.add('hidden'), 900);
-    toast('바다를 건넜습니다. 로마가 앞에 있습니다.');
+    toast('바다를 건넜어요 — 로마가 눈앞이에요.');
   }
 }
 
@@ -1756,7 +1785,7 @@ function updateWaterWalk(dt) {
       wwBoat.rotation.y = Math.PI * 0.75;
       sinkVeil.style.opacity = '0';
       state.modal = false;
-      toast('다시 물가로 돌아왔다.');
+      toast('다시 물가로 돌아왔어요.');
     }
   }
 }
@@ -2013,7 +2042,7 @@ function animate() {
   if (promptOn) {
     const label = boardOn
       ? (markerById['fourth-watch'].visited ? '⚓ 다시 배로 나가기' : '⚓ 배에 오르기')
-      : `${near.shortTitle} ${near.visited ? '다시 방문' : '방문'}`;
+      : `${near.shortTitle} · ${near.visited ? '다시 읽기' : '이야기 읽기'}`;
     if (visitLabel.textContent !== label) visitLabel.textContent = label;
     if (!visitPulsed) {
       visitPulsed = true;
@@ -2030,7 +2059,7 @@ function animate() {
     compassArrow.style.opacity = '1';
   } else if (!compassEl.classList.contains('compass-done')) {
     compassEl.classList.add('compass-done');
-    compassEl.title = '열네 곳을 모두 기억했습니다';
+    compassEl.title = '열네 곳을 모두 걸었어요';
     compassArrow.style.opacity = '';
     compassArrow.style.transform = '';
   }
@@ -2042,8 +2071,8 @@ function animate() {
     fx.m.fxScale = 1 + Math.sin(Math.min(1, fx.t / 0.5) * Math.PI) * 0.5;
     fx.m.ring.scale.setScalar(1 + k * 2.2);
     fx.m.ring.material.opacity = 0.85 * (1 - k);
-    fx.m.pinMat.color.lerpColors(PIN_RED, PIN_INK, k);
-    fx.m.pinMat.emissive.lerpColors(PIN_EMBER, PIN_BLACK, k);
+    fx.m.pinMat.color.lerpColors(fx.from || PIN_RED, PIN_INK, k);
+    fx.m.pinMat.emissive.lerpColors(fx.fromE || PIN_EMBER, PIN_BLACK, k);
     if (k >= 1) {
       settlePin(fx.m);
       pinFx.splice(i, 1);
@@ -2053,15 +2082,36 @@ function animate() {
   const spriteScale = chartView ? 12 : 3.6;
   const spriteY = chartView ? 16 : 6.6;
   for (const m of markers) {
-    m.sprite.scale.set(spriteScale, spriteScale, 1);
+    // 다음 목적지만 붉게 살아 있고, 나머지 미방문지는 무채색으로 기다린다
+    const desired = m.visited ? 'done' : (target === m ? 'target' : 'wait');
+    if (m.styleState !== desired) {
+      m.styleState = desired;
+      if (desired === 'target') {
+        m.pinMat.color.set(COLORS.red);
+        m.pinMat.emissive.set(0x3a0e08);
+        m.ring.material.color.set(COLORS.red);
+        m.ring.material.opacity = 0.85;
+        m.sprite.material = m.spriteMats.red;
+      } else if (desired === 'wait') {
+        m.pinMat.color.set(0x8b8478);
+        m.pinMat.emissive.set(0x000000);
+        m.ring.material.color.set(0x8b8478);
+        m.ring.material.opacity = 0.35;
+        m.sprite.material = m.spriteMats.gray;
+      }
+      // 'done'의 색은 settlePin / 기록 FX가 관리한다
+    }
+    const waiting = m.styleState === 'wait';
+    const sScale = spriteScale * (waiting ? 0.78 : 1);
+    m.sprite.scale.set(sScale, sScale, 1);
     m.pin.scale.setScalar((chartView ? 2.8 : 1) * (m.fxScale || 1));
-    if (!m.visited) {
+    if (m.styleState === 'target') {
       const bob = Math.sin(t * 2 + m.phase) * 0.4;
       m.pin.position.y = bob + 0.2;
       m.pin.rotation.y = t * 0.8;
       m.sprite.position.y = spriteY + bob;
     } else {
-      m.pin.position.y = 0;
+      m.pin.position.y = m.visited ? 0 : 0.2;
       m.sprite.position.y = spriteY;
     }
   }
@@ -2224,5 +2274,6 @@ for (const id of save.charted) {
 if (save.epilogueShown) {
   state.epilogueShown = true;
 }
+updateNextHint();
 
 animate();
