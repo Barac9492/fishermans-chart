@@ -43,44 +43,84 @@ function lfo(freq, depth, param) {
   o.start();
 }
 
-function startAmbience() {
-  // wind: filtered noise that swells and dies like weather, always on
-  const wind = noiseSource(true);
-  const lp = ctx.createBiquadFilter();
-  lp.type = 'lowpass';
-  lp.frequency.value = 340;
-  const wg = ctx.createGain();
-  wg.gain.value = 0.04;
-  wind.connect(lp).connect(wg).connect(ambience);
-  wind.start(0, Math.random());
-  lfo(0.07, 120, lp.frequency);
-  lfo(0.19, 0.016, wg.gain);
+// 화음 패드: 살짝 어긋난 사인파 쌍들이 느리게 맥놀이하는 조용한 드론.
+// 겉 게인(반환값)은 시간대 크로스페이드용, 속 게인은 스스로 숨쉬는 몫.
+function chordPad(freqs) {
+  const outer = ctx.createGain();
+  outer.gain.value = 0;
+  const breath = ctx.createGain();
+  breath.gain.value = 0.8;
+  lfo(0.045, 0.16, breath.gain);
+  const warmthLp = ctx.createBiquadFilter(); // 고역을 눌러 오르간 티를 빼고 아련하게
+  warmthLp.type = 'lowpass';
+  warmthLp.frequency.value = 900;
+  for (const f of freqs) {
+    for (const det of [-0.6, 0.6]) {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = f + det;
+      const g = ctx.createGain();
+      g.gain.value = 0.42 / freqs.length;
+      o.connect(g).connect(warmthLp);
+      o.start();
+    }
+  }
+  warmthLp.connect(breath).connect(outer).connect(ambience);
+  return outer;
+}
+let padDay = null;   // 갈릴리의 낮 — 따뜻한 열린 5도 (D–A–D)
+let padNight = null; // 예루살렘의 밤 — 낮게 가라앉은 단조 빛깔 (A–E–C)
 
-  // lake-lap: a soft band of wash that rises as the walker nears the water
+function startAmbience() {
+  // 바람: 로우패스 두 장을 겹쳐(24dB/oct) 히스를 걷어낸 낮은 웅웅거림.
+  // 일정한 소리가 아니라, 돌풍처럼 부풀었다 잦아든다.
+  const wind = noiseSource(true);
+  const lp1 = ctx.createBiquadFilter();
+  lp1.type = 'lowpass';
+  lp1.frequency.value = 320;
+  const lp2 = ctx.createBiquadFilter();
+  lp2.type = 'lowpass';
+  lp2.frequency.value = 230;
+  const wg = ctx.createGain();
+  wg.gain.value = 0.055;
+  wind.connect(lp1).connect(lp2).connect(wg).connect(ambience);
+  wind.start(0, Math.random());
+  lfo(0.06, 80, lp2.frequency);   // 바람결의 색이 천천히 변하고
+  lfo(0.05, 0.032, wg.gain);      // 돌풍처럼 크게 숨쉰다
+
+  // 물결: 좁힌 대역(250–900Hz) + 파도 주기의 깊은 출렁임 — 히스가 아니라 철썩임
   const water = noiseSource(true);
-  const bp = ctx.createBiquadFilter();
-  bp.type = 'bandpass';
-  bp.frequency.value = 520;
-  bp.Q.value = 0.7;
-  const swell = ctx.createGain(); // the rhythm of the shore
-  swell.gain.value = 0.55;
-  lfo(0.09, 0.3, swell.gain);
-  waterDistGain = ctx.createGain(); // the distance
+  const whp = ctx.createBiquadFilter();
+  whp.type = 'highpass';
+  whp.frequency.value = 250;
+  const wlp = ctx.createBiquadFilter();
+  wlp.type = 'lowpass';
+  wlp.frequency.value = 900;
+  const swell = ctx.createGain();
+  swell.gain.value = 0.34;
+  lfo(0.13, 0.26, swell.gain);    // 파도 한 번의 호흡
+  lfo(0.031, 0.12, swell.gain);   // 먼 너울
+  waterDistGain = ctx.createGain();
   waterDistGain.gain.value = 0;
-  water.connect(bp).connect(swell).connect(waterDistGain).connect(ambience);
+  water.connect(whp).connect(wlp).connect(swell).connect(waterDistGain).connect(ambience);
   water.start(0, 0.7 + Math.random());
 
-  // fire crackle: a hissing high band plus irregular pops, gated by distance
+  // 모닥불: 상시 고역 히스는 낮게 깔기만 하고, 소리의 몸은 불규칙한 탁탁(pop)이 맡는다
   const hiss = noiseSource(true);
   const hp = ctx.createBiquadFilter();
   hp.type = 'highpass';
-  hp.frequency.value = 2200;
+  hp.frequency.value = 3200;
   const hg = ctx.createGain();
-  hg.gain.value = 0.35;
+  hg.gain.value = 0.09;
+  lfo(0.9, 0.04, hg.gain); // 불길이 일렁이는 만큼만
   fireDistGain = ctx.createGain();
   fireDistGain.gain.value = 0;
   hiss.connect(hp).connect(hg).connect(fireDistGain).connect(ambience);
   hiss.start(0, 0.2 + Math.random());
+
+  // 배경 화음: 지역의 시간을 따라 낮 화음과 밤 화음이 서로 자리를 내어 준다
+  padDay = chordPad([146.83, 220, 293.66]);  // D3 · A3 · D4
+  padNight = chordPad([110, 164.81, 261.63]); // A2 · E3 · C4
 }
 
 // a single ember-pop inside a nearby fire
@@ -186,7 +226,7 @@ function step(wood) {
     f.frequency.value = 1400;
   }
   const g = ctx.createGain();
-  g.gain.setValueAtTime((wood ? 0.17 : 0.05) * (0.8 + Math.random() * 0.4), t0);
+  g.gain.setValueAtTime((wood ? 0.11 : 0.045) * (0.8 + Math.random() * 0.4), t0);
   g.gain.exponentialRampToValueAtTime(0.0001, t0 + (wood ? 0.09 : 0.055));
   src.connect(f).connect(g).connect(sfx);
   src.start(t0, Math.random() * 1.5, 0.12);
@@ -300,16 +340,23 @@ export const audio = {
     });
   },
 
-  // dt in seconds; o = { px, pz, shore, fireDist, ducked }
+  // dt in seconds; o = { px, pz, shore, fireDist, warmth, ducked }
   update(dt, o) {
     if (!ctx || ctx.state !== 'running') return;
     const t = ctx.currentTime;
 
     const shoreK = Math.max(0, Math.min(1, 1 - o.shore / 30));
-    waterDistGain.gain.setTargetAtTime(0.012 + shoreK * 0.1, t, 0.4);
+    waterDistGain.gain.setTargetAtTime(0.01 + shoreK * 0.085, t, 0.4);
 
     const fireK = Math.max(0, Math.min(1, 1 - (o.fireDist ?? 999) / 22));
     fireDistGain.gain.setTargetAtTime(fireK * 0.4, t, 0.35);
+
+    // 배경 화음: 하늘과 같은 곡선으로 낮·밤 패드를 섞는다 (길 위의 어스름엔 둘 다 잦아든다)
+    const w = o.warmth ?? 0.5;
+    const dayK = Math.max(0, Math.min(1, (w - 0.35) / 0.4));
+    const nightK = Math.max(0, Math.min(1, (0.4 - w) / 0.3));
+    if (padDay) padDay.gain.setTargetAtTime(0.05 * dayK, t, 1.2);
+    if (padNight) padNight.gain.setTargetAtTime(0.045 * nightK, t, 1.2);
 
     if (o.ducked !== ducked) {
       ducked = o.ducked;

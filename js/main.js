@@ -3245,6 +3245,7 @@ function animate() {
     pz: player.position.z,
     shore: shoreCached,
     fireDist,
+    warmth: duskW,
     ducked: (state.modal && !finale && !voyage),
   });
 
