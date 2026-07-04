@@ -1616,6 +1616,7 @@ reflectMute();
 function tryVisit() {
   if (state.modal || voyage || finale || flowBusy) return;
   if (state.boardMode) { startWaterWalk(); return; }
+  if (state.sailMode) { startVoyage(state.sailMode === 'back'); return; }
   if (!state.nearSite) return;
   const m = state.nearSite;
   const flow = !m.visited && flows[m.site.id];
@@ -1907,29 +1908,33 @@ document.getElementById('epilogue-close').addEventListener('click', () => {
   if (ghostClick()) return;
   epilogueEl.classList.add('hidden');
   state.modal = false;
-  toast('이제 지도를 자유롭게 걸어요. 어느 표지든 다시 찾으면 이야기를 또 읽을 수 있어요.');
+  toast('이제 지도를 자유롭게 걸어요 — 선착장의 배를 타면 성지로 돌아갈 수 있어요. 어느 표지든 다시 찾으면 이야기를 또 읽을 수 있어요.', 7000);
 });
 
 /* ---------------- the voyage to Rome ---------------- */
 
 let pendingVoyage = false;
 let voyage = null;
-function startVoyage() {
+function startVoyage(back = false) {
   if (state.view === 'chart') toggleView();
   state.modal = true;
   player.visible = false;
   voyageBoat.visible = true;
-  voyageCaptionEl.textContent = '큰 바다를 건너, 로마를 향하여…';
+  voyageCaptionEl.textContent = back ? '큰 바다를 건너, 다시 성지로…' : '큰 바다를 건너, 로마를 향하여…';
   voyageCaptionEl.classList.remove('hidden');
   voyageCaptionEl.style.opacity = '1';
   const start = new THREE.Vector3(player.position.x, 0, player.position.z);
-  const end = new THREE.Vector3(ROME_LANDING.x, 0, ROME_LANDING.z);
-  const mid1 = new THREE.Vector3(-110, 0, 40);
-  const mid2 = new THREE.Vector3(-170, 0, 105);
+  const destPt = back ? JOPPA_BOARD : ROME_LANDING;
+  const end = new THREE.Vector3(destPt.x, 0, destPt.z);
+  const mids = back
+    ? [new THREE.Vector3(-170, 0, 105), new THREE.Vector3(-110, 0, 40)]
+    : [new THREE.Vector3(-110, 0, 40), new THREE.Vector3(-170, 0, 105)];
   voyage = {
     t: 0,
     dur: 11,
-    curve: new THREE.CatmullRomCurve3([start, mid1, mid2, end]),
+    curve: new THREE.CatmullRomCurve3([start, mids[0], mids[1], end]),
+    dest: destPt,
+    landToast: back ? '성지로 돌아왔어요 — 갈릴리와 예루살렘이 기다려요.' : '바다를 건넜어요 — 로마가 눈앞이에요.',
   };
 }
 function skipVoyage() {
@@ -1953,14 +1958,16 @@ function updateVoyage(dt) {
   voyageBoat.rotation.z = Math.sin(voyage.t * 2.6) * 0.16 * stormK;
   player.position.set(pos.x, 0, pos.z);
   if (voyage.t >= voyage.dur) {
+    const v = voyage;
     voyage = null;
     voyageBoat.visible = false;
+    voyageBoat.rotation.z = 0;
     player.visible = true;
-    player.position.set(ROME_LANDING.x, 0, ROME_LANDING.z);
+    player.position.set(v.dest.x, 0, v.dest.z);
     state.modal = false;
     voyageCaptionEl.style.opacity = '0';
     setTimeout(() => voyageCaptionEl.classList.add('hidden'), 900);
-    toast('바다를 건넜어요 — 로마가 눈앞이에요.');
+    toast(v.landToast);
   }
 }
 
@@ -3164,15 +3171,26 @@ function animate() {
   const distBoard = Math.hypot(player.position.x - WW_BOARD.x, player.position.z - WW_BOARD.z);
   const boardOn = state.started && !state.modal && !voyage && !finale && !waterWalk && distBoard < 6.5;
   state.boardMode = boardOn;
-  const promptOn = (boardOn || (!!near && state.started && !state.modal && !voyage && !finale)) && !flowBusy;
+  // 로마 ↔ 성지 왕복 배: 13번을 다녀온 뒤에는 양쪽 선착장에서 언제든 오갈 수 있다
+  let sailMode = null;
+  if (state.started && !state.modal && !voyage && !finale && !waterWalk && markerById['voyage-to-rome'].visited) {
+    const dRome = Math.hypot(player.position.x - ROME_LANDING.x, player.position.z - ROME_LANDING.z);
+    const dJoppa = Math.hypot(player.position.x - JOPPA_BOARD.x, player.position.z - JOPPA_BOARD.z);
+    if (dRome < 7) sailMode = 'back';
+    else if (dJoppa < 6) sailMode = 'go';
+  }
+  state.sailMode = sailMode;
+  const promptOn = (boardOn || sailMode || (!!near && state.started && !state.modal && !voyage && !finale)) && !flowBusy;
   visitBtn.classList.toggle('hidden', !promptOn);
   if (promptOn) {
     const flowNear = near && !near.visited && flows[near.site.id];
     const label = boardOn
       ? (markerById['fourth-watch'].visited ? '⚓ 다시 배로 나가기' : '⚓ 배에 오르기')
-      : flowNear
-        ? flowNear.label()
-        : `${near.shortTitle} · ${near.visited ? '다시 읽기' : '이야기 읽기'}`;
+      : sailMode
+        ? (sailMode === 'back' ? '⚓ 성지로 돌아가는 배' : '⚓ 로마로 가는 배')
+        : flowNear
+          ? flowNear.label()
+          : `${near.shortTitle} · ${near.visited ? '다시 읽기' : '이야기 읽기'}`;
     if (visitLabel.textContent !== label) visitLabel.textContent = label;
     if (!visitPulsed) {
       visitPulsed = true;
