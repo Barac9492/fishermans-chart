@@ -445,6 +445,47 @@ drawPath([[0, -154], [10, -168], [16, -183]], 2.4);
 // path from Capernaum down to the Joppa road (a long walk along the coast)
 drawPath([[-10, -156], [-30, -100], [-46, 60], [-46, 92]], 2.6);
 
+// 남행길이 곧 이야기다 — 고백(4번) 직후 시작된 죽음 예고와,
+// 앞서 걸으시는 예수. 빈 길 두 구간에 이정표 돌무더기와 카드를 놓는다.
+function cairn(x, z) {
+  const g = new THREE.Group();
+  const stone = (w, h, y) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, w), lambert(0x9a8d6e));
+    m.position.y = y;
+    m.rotation.y = Math.random();
+    m.castShadow = true;
+    g.add(m);
+  };
+  stone(1.1, 0.5, 0.25);
+  stone(0.8, 0.45, 0.7);
+  stone(0.5, 0.4, 1.05);
+  g.position.set(x, 0, z);
+  scene.add(g);
+  addCollider(x, z, 1.2, 1.2, 0.2);
+}
+cairn(9.5, -58);
+cairn(8, 22);
+landmarkInfo(
+  '죽음을 처음 말씀하신 곳',
+  `"너는 그리스도"라는 고백을 들으신 바로 그때부터, 예수께서는 예루살렘에
+   올라가 죽임을 당하고 사흘 만에 살아나야 할 것을 제자들에게 말씀하시기
+   시작했다. 베드로가 붙들고 막아섰다. "주님, 안 됩니다. 절대로 그런 일은
+   없을 것입니다." 방금 반석이라 불린 그가 곧바로 들은 말은 이것이었다.
+   "사탄아, 내 뒤로 물러가라. 너는 하나님의 일을 생각하지 않고 사람의 일을
+   생각한다." (마 16:21–23) 이 길은 그 말씀 그대로 — 남쪽으로, 십자가를
+   향해 — 내려간다.`,
+  9.5, -58, 6, { range: 28, w: 3, h: 5, d: 3 }
+);
+landmarkInfo(
+  '앞서 걸으시는 분',
+  `예루살렘으로 올라가는 길, 예수께서 앞장서서 걸으셨다. 제자들은 놀랐고,
+   따르는 사람들은 두려워했다. (막 10:32) 이 길 끝에 무엇이 기다리는지 아는
+   사람은 앞서 걷는 그분뿐이었다. "보라, 우리가 예루살렘으로 올라간다.
+   인자가 넘겨져 죽임을 당하고 — 사흘 만에 살아날 것이다." 그 말은 이 길
+   끝의 도성에서 하나도 빠짐없이 이루어진다.`,
+  8, 22, 6, { range: 28, w: 3, h: 5, d: 3 }
+);
+
 /* ---------------- trees & vegetation ---------------- */
 
 function tree(x, z, s = 1, kind = 'olive') {
@@ -701,16 +742,17 @@ tower(0, 90, 8);
 // Golgotha, outside the west wall — a landmark, not a numbered site
 {
   const gx = -40, gz = 116;
-  const mound = new THREE.Mesh(new THREE.ConeGeometry(6.5, 3.2, 12), lambert(0xa89572));
-  mound.position.set(gx, 1.6, gz);
+  // 성벽(20유닛 밖)에서도 또렷이 읽히도록 — 언덕도 십자가도 크게, 가운데가 가장 높게
+  const mound = new THREE.Mesh(new THREE.ConeGeometry(8, 4.6, 12), lambert(0xa89572));
+  mound.position.set(gx, 2.3, gz);
   mound.castShadow = mound.receiveShadow = true;
   scene.add(mound);
-  for (const ox of [-1.6, 0, 1.6]) {
-    const upright = new THREE.Mesh(new THREE.BoxGeometry(0.22, 2.6, 0.22), lambert(COLORS.cross));
-    upright.position.set(gx + ox, 4.6, gz);
+  for (const [ox, hgt] of [[-2.4, 3.4], [0, 4.6], [2.4, 3.4]]) {
+    const upright = new THREE.Mesh(new THREE.BoxGeometry(0.3, hgt, 0.3), lambert(COLORS.cross));
+    upright.position.set(gx + ox, 4.4 + hgt / 2, gz);
     upright.castShadow = true;
-    const beam = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.2, 0.2), lambert(COLORS.cross));
-    beam.position.set(gx + ox, 5.5, gz);
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(2, 0.26, 0.26), lambert(COLORS.cross));
+    beam.position.set(gx + ox, 4.4 + hgt * 0.76, gz);
     beam.castShadow = true;
     scene.add(upright, beam);
   }
@@ -720,7 +762,7 @@ tower(0, 90, 8);
     `성벽 바로 바깥의 낮은 바위 언덕으로, 길 위의 무리가 볼 수 있도록 공개 처형에
      쓰였다. 베드로의 사람들은 이천 년의 기억을 통해 이 언덕을 붙들었고, 오늘날
      그 위에는 성묘 교회가 서 있다 — 도성이 오래전에 감싸 안은 성벽 안에.`,
-    gx, gz, 7.5, { w: 9, h: 8, d: 9 }
+    gx, gz, 11, { w: 11, h: 10, d: 11 }
   );
 }
 
@@ -1131,6 +1173,7 @@ window.addEventListener('keydown', (e) => {
   keys[e.code] = true;
   if (finale) { skipFinale(); return; }
   if (voyage) { skipVoyage(); return; }
+  if (eclipse) { skipEclipse(); return; }
   if (waterWalk && waterWalk.phase !== 'walk') { skipWaterWalk(); return; } // 승선/귀환 컷신은 건너뛰기, 물 위 걷기 중엔 정상 조작
   if ((e.code === 'KeyE' || e.code === 'Enter') && state.started) tryVisit();
   if (e.code === 'KeyM' && state.started) toggleView();
@@ -1149,6 +1192,7 @@ function onUi(e) {
 window.addEventListener('pointerdown', (e) => {
   if (finale) { skipFinale(); return; }
   if (voyage) { skipVoyage(); return; }
+  if (eclipse) { skipEclipse(); return; }
   if (waterWalk && waterWalk.phase === 'boarding') { skipWaterWalk(); return; }
   if (!state.started || state.modal || onUi(e)) return;
   const wantsJoy = e.pointerType === 'touch' && e.clientX < window.innerWidth * 0.45;
@@ -1359,10 +1403,13 @@ audio.setMuted(save.muted);
 reflectMute();
 
 function tryVisit() {
-  if (state.modal || voyage || finale) return;
+  if (state.modal || voyage || finale || flowBusy) return;
   if (state.boardMode) { startWaterWalk(); return; }
   if (!state.nearSite) return;
-  openCard(state.nearSite);
+  const m = state.nearSite;
+  const flow = !m.visited && flows[m.site.id];
+  if (flow) { flow.advance(m); return; }
+  openCard(m);
 }
 visitBtn.addEventListener('click', tryVisit);
 
@@ -1375,6 +1422,14 @@ function handleTap(cx, cy) {
   );
   for (const m of markers) {
     if (tapRay.intersectObject(m.g, true).length) {
+      // 장면이 있는 곳은 멀리서 탭해도 미리 열리지 않는다 — 직접 가서 겪어야 한다
+      const flow = !m.visited && flows[m.site.id];
+      if (flow) {
+        const d = Math.hypot(player.position.x - m.site.pos.x, player.position.z - m.site.pos.z);
+        if (d < 8 && !flowBusy) flow.advance(m);
+        else toast(flow.remoteHint || '그곳에 직접 가면 이야기를 겪을 수 있어요.');
+        return;
+      }
       openCard(m);
       return;
     }
@@ -1505,6 +1560,7 @@ document.getElementById('card-close').addEventListener('click', () => {
   if (ghostClick()) return;
   cardEl.classList.add('hidden');
   state.modal = false;
+  const charted = pendingPinFx; // 방금 처음 기록한 표지 (재방문이면 null)
   if (pendingPinFx) {
     // 표지가 회색(대기) 상태에서 기록될 수도 있으니, 지금 색에서 먹색으로 저물게 한다
     pinFx.push({
@@ -1524,6 +1580,12 @@ document.getElementById('card-close').addEventListener('click', () => {
   } else if (state.visitedCount === SITES.length && !state.epilogueShown) {
     state.epilogueShown = true;
     finaleQueued = true;
+  }
+  // 십자가: 카드가 닫히는 순간 온 땅에 어둠이 내린다
+  if (charted && charted.site.id === 'at-a-distance') startEclipse();
+  // 빈 무덤: 천사의 말이 다음 걸음의 방향이 된다
+  if (charted && charted.site.id === 'empty-tomb') {
+    toast('"갈릴리로 가라. 전에 말씀하신 대로, 거기서 그를 보리라." (막 16:7)', 7000);
   }
 });
 
@@ -1802,6 +1864,337 @@ function updateWaterWalk(dt) {
   }
 }
 
+/* ---------------- 십자가의 어둠 (눅 23:44 · 요 19:30) ----------------
+   7번 카드를 닫는 순간, 온 세계가 어두워진다. 복음의 중심 사건은
+   멀리서 보더라도 세계 전체를 덮는 것으로 겪어야 한다. */
+const eclipseEl = document.getElementById('eclipse');
+let eclipse = null;
+function startEclipse() {
+  if (state.view === 'chart') toggleView();
+  state.modal = true;
+  eclipse = {
+    t: 0, dur: 16,
+    caps: [
+      { at: 1.0, text: '정오였다. 그런데 온 땅에 어둠이 내렸다. (눅 23:44)' },
+      { at: 5.2, text: '세 시간이 지났을 때, 크게 외치는 소리가 들렸다.', cry: true },
+      { at: 8.8, text: '"다 이루었다." (요 19:30)' },
+      { at: 12.2, text: '그 순간, 성전 휘장이 위에서 아래까지 찢어졌다.' },
+    ],
+  };
+  voyageCaptionEl.textContent = '';
+  voyageCaptionEl.classList.remove('hidden');
+}
+function skipEclipse() {
+  if (eclipse && eclipse.t > 1.5) eclipse.t = Math.max(eclipse.t, eclipse.dur - 1.2);
+}
+function updateEclipse(dt) {
+  eclipse.t += dt;
+  const fadeIn = Math.min(1, eclipse.t / 2.5);
+  const fadeOut = Math.max(0, 1 - Math.max(0, eclipse.t - (eclipse.dur - 1.2)) / 1.2);
+  eclipseEl.style.opacity = String(0.93 * fadeIn * fadeOut);
+  while (eclipse.caps.length && eclipse.t >= eclipse.caps[0].at) {
+    const c = eclipse.caps.shift();
+    voyageCaptionEl.textContent = c.text;
+    voyageCaptionEl.style.opacity = '1';
+    if (c.cry) audio.play('horn', { freq: 49, gain: 0.42, dur: 3.4 });
+  }
+  if (eclipse.t >= eclipse.dur) {
+    eclipse = null;
+    eclipseEl.style.opacity = '0';
+    voyageCaptionEl.style.opacity = '0';
+    setTimeout(() => voyageCaptionEl.classList.add('hidden'), 800);
+    state.modal = false;
+  }
+}
+
+/* ---------------- 장면 상호작용: 그물 · 고백 · 부인 · 회복 ----------------
+   첫 방문에는 카드를 바로 열지 않고 장면을 먼저 겪는다.
+   각 흐름의 끝에서 openCard()가 불려 기록과 카드로 이어진다. */
+
+const dialogEl = document.getElementById('dialog');
+const dialogSpeaker = document.getElementById('dialog-speaker');
+const dialogLine = document.getElementById('dialog-line');
+const dialogActions = document.getElementById('dialog-actions');
+
+function showDialog(speaker, line) {
+  state.modal = true;
+  dialogSpeaker.textContent = speaker;
+  dialogLine.textContent = line;
+  dialogActions.innerHTML = '';
+  dialogEl.classList.remove('hidden');
+}
+function closeDialog() {
+  dialogEl.classList.add('hidden');
+  dialogActions.innerHTML = '';
+}
+function dialogButton(label, onTap) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.textContent = label;
+  b.addEventListener('click', onTap);
+  dialogActions.appendChild(b);
+  return b;
+}
+// 길게 눌러야 완성되는 버튼 — 고백에는 손끝에 무게가 있다
+function dialogHoldButton(label, ms, onDone) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  const fill = document.createElement('span');
+  fill.className = 'hold-fill';
+  b.append(document.createTextNode(label), fill);
+  let start = null, timer = null, fired = false;
+  const cancel = () => { start = null; clearInterval(timer); fill.style.width = '0%'; };
+  b.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    try { b.setPointerCapture(e.pointerId); } catch { /* 합성 이벤트 등 */ }
+    start = performance.now();
+    timer = setInterval(() => {
+      if (start === null || fired) return;
+      const k = Math.min(1, (performance.now() - start) / ms);
+      fill.style.width = `${k * 100}%`;
+      if (k >= 1) { fired = true; clearInterval(timer); onDone(); }
+    }, 30);
+  });
+  b.addEventListener('pointerup', cancel);
+  b.addEventListener('pointercancel', cancel);
+  dialogActions.appendChild(b);
+  return b;
+}
+
+// ---- 그물 던지기 연출 (1번에서 쓰고, 9·10번이 재사용한다) ----
+const netGroup = new THREE.Group();
+{
+  const mat = new THREE.LineBasicMaterial({ color: 0x5a4a38 });
+  const rim = [];
+  for (let i = 0; i <= 20; i++) {
+    const a = (i / 20) * Math.PI * 2;
+    rim.push(new THREE.Vector3(Math.cos(a) * 1.4, 0, Math.sin(a) * 1.4));
+  }
+  netGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(rim), mat));
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    netGroup.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(Math.cos(a) * 1.4, 0, Math.sin(a) * 1.4)]),
+      mat
+    ));
+  }
+  netGroup.visible = false;
+  scene.add(netGroup);
+}
+const splashRings = [];
+function splashAt(x, z, big = false) {
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.3, 0.5, 20),
+    new THREE.MeshBasicMaterial({ color: 0xe8f0ee, transparent: true, opacity: 0.8, side: THREE.DoubleSide })
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.set(x, 0.05, z);
+  scene.add(ring);
+  splashRings.push({ m: ring, t: 0, s: big ? 3.4 : 1.8 });
+  audio.play('splash', { gain: big ? 0.4 : 0.24 });
+}
+const fishJumps = [];
+const fishMat = new THREE.MeshLambertMaterial({ color: 0xc7d2d6 });
+function fishBurst(x, z, n = 14) {
+  for (let i = 0; i < n; i++) {
+    const f = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.5, 5), fishMat);
+    f.position.set(x, 0, z);
+    scene.add(f);
+    const a = Math.random() * Math.PI * 2;
+    fishJumps.push({
+      m: f, t: -Math.random() * 1.4, dur: 0.9 + Math.random() * 0.4,
+      x, z, dx: Math.cos(a) * (0.6 + Math.random()), dz: Math.sin(a) * (0.6 + Math.random()),
+      h: 1.3 + Math.random() * 1.3,
+    });
+  }
+}
+let netCast = null; // { t, fromX, fromZ, toX, toZ, empty, onDone }
+let flowBusy = false;
+function castNet(toX, toZ, { empty, onDone }) {
+  flowBusy = true;
+  netCast = { t: 0, fromX: player.position.x, fromZ: player.position.z, toX, toZ, empty, onDone };
+}
+function updateNetFx(dt) {
+  if (netCast) {
+    const c = netCast;
+    c.t += dt;
+    if (c.t < 0.8) { // 그물이 날아간다
+      const k = c.t / 0.8;
+      netGroup.visible = true;
+      netGroup.position.set(
+        c.fromX + (c.toX - c.fromX) * k,
+        1.6 + Math.sin(k * Math.PI) * 1.6,
+        c.fromZ + (c.toZ - c.fromZ) * k
+      );
+      netGroup.scale.setScalar(0.4 + k);
+    } else if (!c.splashed) {
+      c.splashed = true;
+      splashAt(c.toX, c.toZ);
+      netGroup.position.y = 0.05;
+    } else if (c.t < 2.3) { // 가라앉아 기다린다
+      netGroup.position.y = Math.max(-0.3, netGroup.position.y - dt * 0.5);
+    } else if (c.t < 3.3) { // 끌어올린다
+      const k = (c.t - 2.3) / 1;
+      netGroup.position.set(c.toX + (c.fromX - c.toX) * k, 0.2 + k * 0.8, c.toZ + (c.fromZ - c.toZ) * k);
+      netGroup.scale.setScalar(1.4 - k * 0.9);
+      if (!c.empty && !c.burst) {
+        c.burst = true;
+        fishBurst(c.toX, c.toZ);
+        splashAt(c.toX, c.toZ, true);
+      }
+    } else {
+      netGroup.visible = false;
+      netCast = null;
+      flowBusy = false;
+      if (c.onDone) c.onDone();
+    }
+  }
+  for (let i = splashRings.length - 1; i >= 0; i--) {
+    const s = splashRings[i];
+    s.t += dt;
+    const k = s.t / 0.8;
+    if (k >= 1) { scene.remove(s.m); splashRings.splice(i, 1); continue; }
+    s.m.scale.setScalar(1 + k * s.s);
+    s.m.material.opacity = 0.8 * (1 - k);
+  }
+  for (let i = fishJumps.length - 1; i >= 0; i--) {
+    const f = fishJumps[i];
+    f.t += dt;
+    if (f.t < 0) continue;
+    const k = f.t / f.dur;
+    if (k >= 1) {
+      const lx = f.m.position.x, lz = f.m.position.z;
+      scene.remove(f.m);
+      fishJumps.splice(i, 1);
+      if (Math.random() < 0.5) splashAt(lx, lz);
+      continue;
+    }
+    f.m.position.set(f.x + f.dx * k, Math.sin(k * Math.PI) * f.h, f.z + f.dz * k);
+    f.m.rotation.z = Math.PI * (0.5 - k);
+  }
+}
+
+// ---- 흐름 정의: id → { label(), advance(marker) } ----
+const flows = {};
+
+flows.nets = {
+  step: 0,
+  labels: ['🕸 그물 던지기', '🕸 그물 다시 던지기', '🕸 한 번 더 던지기', '🕸 말씀대로 깊은 데 던지기'],
+  label() { return this.labels[this.step]; },
+  advance(marker) {
+    const dir = Math.atan2(0 - player.position.x, -129 - player.position.z); // 호수 한가운데 쪽
+    const deep = this.step === 3;
+    const dist = deep ? 9 : 5;
+    const step = this.step;
+    castNet(player.position.x + Math.sin(dir) * dist, player.position.z + Math.cos(dir) * dist, {
+      empty: !deep,
+      onDone: () => {
+        if (step === 0) toast('…아무것도 걸리지 않았다.');
+        else if (step === 1) toast('또 빈 그물이다. 밤새도록 이랬다.');
+        else if (step === 2) toast('"깊은 데로 가서 그물을 내려 고기를 잡아라." (눅 5:4)', 6000);
+        else {
+          toast('그물이 찢어질 만큼 — 배가 잠길 만큼!');
+          setTimeout(() => openCard(marker), 1800);
+        }
+      },
+    });
+    if (this.step < 3) this.step++;
+  },
+};
+
+flows['caesarea-philippi'] = {
+  label() { return '🗣 물음에 대답하기'; },
+  advance(marker) {
+    showDialog('예수께서 물으셨다', '"사람들이 나를 누구라 하느냐?"');
+    ['세례 요한이라 합니다', '엘리야라 합니다', '예언자 중 하나라 합니다'].forEach((a) => {
+      dialogButton(a, () => {
+        showDialog('예수께서 다시 물으셨다', '"그러면 너희는 — 나를 누구라 하느냐?"');
+        dialogHoldButton('길게 눌러 고백하기 · "주는 그리스도시요, 살아 계신 하나님의 아들이십니다"', 1400, () => {
+          closeDialog();
+          openCard(marker);
+        });
+      });
+    });
+  },
+};
+
+flows['first-fire'] = {
+  round: 0,
+  qs: [
+    ['불빛 곁의 여종이 말했다', '"당신도 그 갈릴리 사람, 예수와 함께 있었지요?"'],
+    ['조금 뒤, 다른 사람이 말했다', '"이 사람도 그들과 한패요."'],
+    ['한 시간쯤 지나, 또 누군가', '"틀림없이 한패요. 말씨가 갈릴리 사람이오."'],
+  ],
+  label() { return '🔥 불 곁에 서다'; },
+  advance(marker) { this.ask(marker); },
+  ask(marker) {
+    const [sp, q] = this.qs[this.round];
+    showDialog(sp, q);
+    // 옳은 대답은 손끝에서 도망간다 — 부인의 심리를 조작으로
+    const know = dialogButton('…나는 그를 압니다', () => {});
+    know.classList.add('ghost-btn');
+    let dodges = 0;
+    const dodge = (e) => {
+      e.preventDefault();
+      dodges++;
+      know.style.transform = `translate(${(Math.random() - 0.5) * 140}px, ${(Math.random() - 0.5) * 56}px)`;
+      if (dodges >= 2) know.style.opacity = '0.35';
+    };
+    know.addEventListener('pointerdown', dodge);
+    know.addEventListener('pointerenter', dodge);
+    dialogButton('나는 그를 모릅니다', () => {
+      this.round++;
+      if (this.round < 3) { this.ask(marker); return; }
+      closeDialog();
+      audio.play('rooster', { gain: 0.22 });
+      voyageCaptionEl.textContent = '주께서 돌이켜 베드로를 보시니라. (눅 22:61)';
+      voyageCaptionEl.classList.remove('hidden');
+      voyageCaptionEl.style.opacity = '1';
+      setTimeout(() => {
+        voyageCaptionEl.style.opacity = '0';
+        setTimeout(() => voyageCaptionEl.classList.add('hidden'), 800);
+        openCard(marker);
+      }, 3400);
+    });
+  },
+};
+
+flows['three-questions'] = {
+  round: 0,
+  label() { return '🔥 조반 뒤, 그분 곁에 앉다'; },
+  advance(marker) { this.ask(marker); },
+  ask(marker) {
+    const third = this.round === 2;
+    showDialog(
+      third ? '세 번째 물음 — 베드로는 근심했다' : '예수께서 물으셨다',
+      '"요한의 아들 시몬아, 네가 나를 사랑하느냐?"'
+    );
+    const btn = dialogHoldButton(
+      '길게 눌러 대답하기 · "주님, 제가 주님을 사랑하는 줄을 주님이 아십니다"',
+      third ? 2000 : 1100,
+      () => {
+        const replies = ['"내 어린 양을 먹여라."', '"내 양을 쳐라."', '"내 양을 먹여라 — 나를 따르라."'];
+        dialogSpeaker.textContent = '예수께서 말씀하셨다';
+        dialogLine.textContent = replies[this.round];
+        dialogActions.innerHTML = '';
+        this.round++;
+        setTimeout(() => {
+          if (this.round < 3) this.ask(marker);
+          else { closeDialog(); openCard(marker); }
+        }, 1900);
+      }
+    );
+    if (third) btn.classList.add('tremble');
+  },
+};
+
+// 3번은 흐름이 아니라 배가 관문 — 멀리서 탭했을 때의 안내만 담당한다
+flows['fourth-watch'] = {
+  label() { return '새벽 네 시 · 이야기 읽기'; },
+  advance(marker) { openCard(marker); },
+  remoteHint: '물가의 붉은 깃발이 걸린 배에 올라야 갈 수 있어요.',
+};
+
 /* ---------------- finale: the confession, circling the dome ---------------- */
 
 let finale = null;
@@ -1984,7 +2377,9 @@ function animate() {
   }
   if (voyage) updateVoyage(dt);
   if (waterWalk) updateWaterWalk(dt);
+  if (eclipse) updateEclipse(dt);
   if (finale) updateFinale(dt);
+  updateNetFx(dt);
 
   if (finale) {
     const u = smoothstep01(Math.min(1, finale.t / (finale.dur - 3)));
@@ -2050,12 +2445,15 @@ function animate() {
   const distBoard = Math.hypot(player.position.x - WW_BOARD.x, player.position.z - WW_BOARD.z);
   const boardOn = state.started && !state.modal && !voyage && !finale && !waterWalk && distBoard < 6.5;
   state.boardMode = boardOn;
-  const promptOn = boardOn || (!!near && state.started && !state.modal && !voyage && !finale);
+  const promptOn = (boardOn || (!!near && state.started && !state.modal && !voyage && !finale)) && !flowBusy;
   visitBtn.classList.toggle('hidden', !promptOn);
   if (promptOn) {
+    const flowNear = near && !near.visited && flows[near.site.id];
     const label = boardOn
       ? (markerById['fourth-watch'].visited ? '⚓ 다시 배로 나가기' : '⚓ 배에 오르기')
-      : `${near.shortTitle} · ${near.visited ? '다시 읽기' : '이야기 읽기'}`;
+      : flowNear
+        ? flowNear.label()
+        : `${near.shortTitle} · ${near.visited ? '다시 읽기' : '이야기 읽기'}`;
     if (visitLabel.textContent !== label) visitLabel.textContent = label;
     if (!visitPulsed) {
       visitPulsed = true;

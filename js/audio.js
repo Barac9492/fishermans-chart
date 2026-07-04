@@ -192,6 +192,23 @@ function step(wood) {
   src.start(t0, Math.random() * 1.5, 0.12);
 }
 
+// 물보라: 그물이 수면을 치는 소리
+function splash(gain = 0.3) {
+  const t0 = ctx.currentTime;
+  const src = noiseSource();
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.setValueAtTime(420, t0);
+  bp.frequency.exponentialRampToValueAtTime(950, t0 + 0.22);
+  bp.Q.value = 0.9;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(gain, t0 + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.5);
+  src.connect(bp).connect(g).connect(sfx);
+  src.start(t0, Math.random(), 0.55);
+}
+
 // a rushing, mighty wind — Pentecost
 function windRush(gain = 0.3) {
   const t0 = ctx.currentTime;
@@ -327,6 +344,7 @@ export const audio = {
       case 'gull': gullCry(0.05); break;
       case 'rooster': roosterCrow(opts.gain ?? 0.14); break;
       case 'windRush': windRush(opts.gain ?? 0.3); break;
+      case 'splash': splash(opts.gain ?? 0.3); break;
     }
   },
 

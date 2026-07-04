@@ -630,6 +630,74 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
 .reset-link:hover { transform: none; color: var(--ink); border-color: var(--ink); }
 .reset-link:active { transform: none; box-shadow: none; }
 
+/* 십자가의 어둠 — 온 땅을 덮는 암전 */
+#eclipse {
+  position: fixed;
+  inset: 0;
+  z-index: 17;
+  background: #05060c;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 장면 대화: 고백(4) · 부인(6) · 회복(11) */
+.dialog-inner {
+  max-width: 460px;
+  margin: auto;
+  background: var(--sand);
+  border: 2px solid var(--ink);
+  box-shadow: 6px 6px 0 rgba(43, 38, 32, 0.4);
+  padding: 26px 28px 28px;
+  text-align: center;
+  animation: fadein 0.3s ease;
+}
+#dialog-speaker { font-style: italic; color: var(--ink-soft); font-size: 15px; }
+#dialog-line {
+  margin-top: 10px;
+  font-family: 'Nanum Myeongjo', serif;
+  font-weight: 800;
+  font-size: clamp(19px, 3.4vw, 24px);
+  line-height: 1.5;
+}
+#dialog-actions {
+  margin-top: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+}
+#dialog-actions button {
+  margin: 0;
+  width: 100%;
+  max-width: 380px;
+  font-size: 16px;
+  line-height: 1.45;
+  padding: 12px 18px;
+  position: relative;
+  overflow: hidden;
+  touch-action: none;
+}
+#dialog-actions button .hold-fill {
+  position: absolute;
+  inset: 0;
+  width: 0%;
+  background: rgba(236, 226, 196, 0.3);
+  pointer-events: none;
+}
+/* 부인 장면: 옳은 대답이 손끝에서 도망간다 */
+#dialog-actions button.ghost-btn {
+  background: #8b8478;
+  box-shadow: 0 3px 0 #6b665c;
+  transition: transform 0.12s ease, opacity 0.4s ease;
+}
+/* 세 번째 대답: 근심으로 떨리는 손 */
+#dialog-actions button.tremble { animation: tremble 0.45s infinite; }
+@keyframes tremble {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-2.5px); }
+  75% { transform: translateX(2.5px); }
+}
+
 /* 물에 가라앉을 때 화면 가장자리가 어두워지는 비네트 */
 #sink-veil {
   position: fixed;
