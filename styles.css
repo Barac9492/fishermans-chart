@@ -349,6 +349,30 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
 
 /* 기념 카드 (완주 시) */
 #souvenir-wrap { margin-top: 18px; }
+#souvenir-name-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: stretch;
+  margin-bottom: 12px;
+}
+#souvenir-name {
+  font-family: 'Noto Serif KR', Georgia, serif;
+  font-size: 16px;
+  padding: 9px 14px;
+  width: 180px;
+  color: var(--ink);
+  background: rgba(255, 252, 240, 0.9);
+  border: 1.5px solid var(--ink);
+  border-radius: 3px;
+  text-align: center;
+}
+#souvenir-name:focus { outline: 2px solid var(--gold); }
+#souvenir-name-btn {
+  margin: 0;
+  font-size: 15px;
+  padding: 9px 16px;
+}
 #souvenir-img {
   display: block;
   width: 100%;

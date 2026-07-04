@@ -1392,6 +1392,7 @@ function regionWarmth(x, z) {
 
 const keys = {};
 window.addEventListener('keydown', (e) => {
+  if (e.target && e.target.tagName === 'INPUT') return; // 이름 입력 중엔 게임 키를 먹지 않는다
   keys[e.code] = true;
   if (finale) { skipFinale(); return; }
   if (voyage) { skipVoyage(); return; }
@@ -1482,7 +1483,7 @@ const SAVE_KEY = 'fisherman-chart-v1';
 const save = (() => {
   let s = {};
   try { s = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}') || {}; } catch { /* private mode */ }
-  return Object.assign({ charted: [], epilogueShown: false, muted: false, sheep: [], sheepHint: false }, s);
+  return Object.assign({ charted: [], epilogueShown: false, muted: false, sheep: [], sheepHint: false, name: '' }, s);
 })();
 function persistSave() {
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch { /* private mode */ }
@@ -1892,18 +1893,28 @@ function makeSouvenirCanvas() {
     ctx.fillStyle = '#2b2620';
     ctx.fillText(String(site.num), cx, cy + 52);
   });
+  // 트로피가 아니라 받는 편지 — 성취의 기록이 아니라 이름이 불린 증서 (눅 10:20)
+  const name = (save.name || '').trim();
   ctx.fillStyle = '#a8341f';
   ctx.font = `700 22px ${kFont}`;
-  ctx.fillText('열네 곳을 모두 걸었습니다', W / 2, 560);
+  ctx.fillText(name ? `${name}에게 —` : '열네 곳을 모두 걸었습니다', W / 2, 560);
   ctx.fillStyle = '#5a5142';
   ctx.font = `italic 16px ${bFont}`;
-  const line = '빈 그물에서 새벽 숯불까지 —';
-  const line2 = '열네 곳 모두에 같은 분이 계셨습니다.';
-  ctx.fillText(line, W / 2, 600);
-  ctx.fillText(line2, W / 2, 626);
+  ctx.fillText('빈 그물에서 새벽 숯불까지 —', W / 2, 600);
+  ctx.fillText('열네 곳 모두에 같은 분이 계셨습니다.', W / 2, 626);
+  if (save.sheep.length >= 12) {
+    ctx.fillText('잃은 양 열두 마리도 집으로 돌아왔습니다.', W / 2, 652);
+  }
   ctx.font = `18px ${bFont}`;
   ctx.fillStyle = '#2b2620';
-  ctx.fillText('“내 양을 먹여라”  — 요한복음 21:17', W / 2, 700);
+  if (name) {
+    ctx.fillText('“내가 너를 지명하여 불렀나니, 너는 내 것이라.”', W / 2, 700);
+    ctx.font = `15px ${bFont}`;
+    ctx.fillStyle = '#5a5142';
+    ctx.fillText('— 이사야 43:1', W / 2, 726);
+  } else {
+    ctx.fillText('“내 양을 먹여라”  — 요한복음 21:17', W / 2, 700);
+  }
   ctx.font = `14px ${bFont}`;
   ctx.fillStyle = '#8a7f6a';
   ctx.fillText('fishermans-chart.vercel.app', W / 2, H - 48);
@@ -1913,14 +1924,41 @@ function buildSouvenir() {
   const wrap = document.getElementById('souvenir-wrap');
   if (wrap.dataset.built) return;
   wrap.dataset.built = '1';
-  const cv = makeSouvenirCanvas();
+  let cv = makeSouvenirCanvas();
   const img = document.createElement('img');
   img.id = 'souvenir-img';
   img.alt = '어부의 지도 완주 기념 카드';
-  cv.toBlob((blob) => {
-    souvenirURL = URL.createObjectURL(blob);
-    img.src = souvenirURL;
-  }, 'image/png');
+  const refreshImg = () => {
+    cv.toBlob((blob) => {
+      if (souvenirURL) URL.revokeObjectURL(souvenirURL);
+      souvenirURL = URL.createObjectURL(blob);
+      img.src = souvenirURL;
+    }, 'image/png');
+  };
+  refreshImg();
+  // 이름 새기기 — 카드가 아이에게 보내는 편지가 된다
+  const nameRow = document.createElement('div');
+  nameRow.id = 'souvenir-name-row';
+  const nameInput = document.createElement('input');
+  nameInput.id = 'souvenir-name';
+  nameInput.maxLength = 10;
+  nameInput.placeholder = '카드에 새길 이름';
+  nameInput.value = save.name || '';
+  const nameBtn = document.createElement('button');
+  nameBtn.id = 'souvenir-name-btn';
+  nameBtn.type = 'button';
+  nameBtn.textContent = '이름 새기기';
+  const engrave = () => {
+    const v = nameInput.value.trim();
+    if (!v || v === save.name) return;
+    save.name = v;
+    persistSave();
+    cv = makeSouvenirCanvas();
+    refreshImg();
+  };
+  nameBtn.addEventListener('click', engrave);
+  nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); engrave(); } });
+  nameRow.append(nameInput, nameBtn);
   const btn = document.createElement('button');
   btn.id = 'souvenir-btn';
   btn.type = 'button';
@@ -1938,7 +1976,7 @@ function buildSouvenir() {
       a.click();
     }, 'image/png');
   });
-  wrap.append(img, btn);
+  wrap.append(nameRow, img, btn);
 }
 document.getElementById('epilogue-close').addEventListener('click', () => {
   if (ghostClick()) return;
