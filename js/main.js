@@ -355,19 +355,75 @@ lakeWater.position.set(0, -0.42, -129);
 lakeWater.receiveShadow = true;
 scene.add(lakeWater);
 
-function extrudeLand(points, topColor, sideColor, { hole = null, depth = 2.2 } = {}) {
+// 흙바닥 질감: 모래 알갱이와 옅은 얼룩 — 단색 평면이던 땅에 살결을 준다
+function makeGroundTexture(base) {
+  const [cv, ctx] = canvas2d(256, 256);
+  ctx.fillStyle = base;
+  ctx.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 900; i++) {
+    ctx.fillStyle = `rgba(${Math.random() < 0.5 ? '70,58,40' : '255,246,222'},${(0.03 + Math.random() * 0.07).toFixed(3)})`;
+    const s = 1 + Math.random() * 2.5;
+    ctx.fillRect(Math.random() * 256, Math.random() * 256, s, s);
+  }
+  for (let i = 0; i < 26; i++) { // 넓고 옅은 얼룩
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 22 + Math.random() * 30);
+    g.addColorStop(0, `rgba(120,100,70,${(0.02 + Math.random() * 0.045).toFixed(3)})`);
+    g.addColorStop(1, 'rgba(120,100,70,0)');
+    ctx.save();
+    ctx.translate(Math.random() * 256, Math.random() * 256);
+    ctx.fillStyle = g;
+    ctx.fillRect(-52, -52, 104, 104);
+    ctx.restore();
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+function extrudeLand(points, topColor, sideColor, { hole = null, depth = 2.2, topMap = null } = {}) {
   const shape = new THREE.Shape(points.map(([x, z]) => new THREE.Vector2(x, z)));
   if (hole) shape.holes.push(new THREE.Path(hole.map(([x, z]) => new THREE.Vector2(x, z))));
   const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false });
   geo.rotateX(Math.PI / 2);
-  const mesh = new THREE.Mesh(geo, [lambert(topColor), lambert(sideColor)]);
+  const topMat = topMap
+    ? new THREE.MeshLambertMaterial({ map: topMap, color: 0xfff8ea })
+    : lambert(topColor);
+  const mesh = new THREE.Mesh(geo, [topMat, lambert(sideColor)]);
   mesh.receiveShadow = true;
   scene.add(mesh);
   return mesh;
 }
 
-extrudeLand(MAIN_LAND, COLORS.land, COLORS.landSide, { hole: LAKE });
-extrudeLand(ROME_LAND, COLORS.romeLand, COLORS.romeLandSide);
+// ExtrudeGeometry의 UV는 도형 좌표 그대로라, repeat로 월드 24유닛마다 타일링한다
+const sandTex = makeGroundTexture('#cfc09a');
+sandTex.repeat.set(1 / 24, 1 / 24);
+const romeTex = makeGroundTexture('#c9bb9b');
+romeTex.repeat.set(1 / 24, 1 / 24);
+extrudeLand(MAIN_LAND, COLORS.land, COLORS.landSide, { hole: LAKE, topMap: sandTex });
+extrudeLand(ROME_LAND, COLORS.romeLand, COLORS.romeLandSide, { topMap: romeTex });
+
+// 물가 거품 띠: 호수 가장자리를 따라 밝은 리본 — 뭍과 물의 경계가 살아난다
+{
+  const geos = [];
+  for (let i = 0; i < LAKE.length; i++) {
+    const [ax, az] = LAKE[i];
+    const [bx, bz] = LAKE[(i + 1) % LAKE.length];
+    const len = Math.hypot(bx - ax, bz - az);
+    const g = new THREE.PlaneGeometry(len + 0.6, 0.85);
+    g.rotateX(-Math.PI / 2);
+    g.rotateY(-Math.atan2(bz - az, bx - ax));
+    g.translate((ax + bx) / 2, 0.07, (az + bz) / 2);
+    geos.push(g);
+  }
+  const foam = new THREE.Mesh(
+    mergeGeometries(geos, false),
+    new THREE.MeshBasicMaterial({ color: 0xe6efe9, transparent: true, opacity: 0.4, depthWrite: false })
+  );
+  scene.add(foam);
+}
+
 
 // a scattering of dark basalt boulders around the lake shore
 {
@@ -486,10 +542,46 @@ landmarkInfo(
   8, 22, 6, { range: 28, w: 3, h: 5, d: 3 }
 );
 
+// 길가의 풀 무더기: 작은 십자 판 — 수백 개를 하나의 메시로 합친다
+{
+  const geos = [];
+  const tuft = (x, z) => {
+    const s = 0.5 + Math.random() * 0.5;
+    for (const ry of [0, Math.PI / 2]) {
+      const g = new THREE.PlaneGeometry(1.1 * s, 0.75 * s);
+      g.rotateY(ry + Math.random() * 0.6);
+      g.translate(x, 0.32 * s, z);
+      geos.push(g);
+    }
+  };
+  // 요단 길가와 호숫가, 갈릴리 들판에 흩뿌린다
+  for (let i = 0; i < JORDAN_ROAD.length - 1; i++) {
+    const [ax, az] = JORDAN_ROAD[i], [bx, bz] = JORDAN_ROAD[i + 1];
+    for (let k = 0; k < 14; k++) {
+      const f = Math.random();
+      const side = (Math.random() < 0.5 ? -1 : 1) * (2.6 + Math.random() * 4);
+      tuft(ax + (bx - ax) * f + side, az + (bz - az) * f + (Math.random() - 0.5) * 3);
+    }
+  }
+  for (let i = 0; i < LAKE.length; i++) {
+    const [ax, az] = LAKE[i];
+    const cx = ax * 1.16, cz = -129 + (az + 129) * 1.16; // 호수 바깥쪽으로
+    if (Math.random() < 0.75) tuft(cx + (Math.random() - 0.5) * 3, cz + (Math.random() - 0.5) * 3);
+  }
+  for (let k = 0; k < 60; k++) tuft(-40 + Math.random() * 85, -200 + Math.random() * 110);
+  const grass = new THREE.Mesh(
+    mergeGeometries(geos, false),
+    new THREE.MeshLambertMaterial({ color: 0x8a9a68, side: THREE.DoubleSide })
+  );
+  scene.add(grass);
+}
+
 /* ---------------- trees & vegetation ---------------- */
 
+const swayers = []; // 바람에 흔들리는 나무들
 function tree(x, z, s = 1, kind = 'olive') {
   const g = new THREE.Group();
+  swayers.push({ g, ph: Math.random() * 6 });
   const trunkColor = kind === 'palm' ? COLORS.palmTrunk : COLORS.oliveTrunk;
   const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.13 * s, 0.22 * s, 1.3 * s, 5), lambert(trunkColor));
   trunk.position.y = 0.65 * s;
@@ -555,8 +647,17 @@ function basaltHouse(x, z, w = 3, d = 3, h = 2.4, rotY = 0) {
   const wallColor = Math.random() < 0.5 ? COLORS.basalt : COLORS.basaltLight;
   const body = box(w, h, d, wallColor, 0, h / 2, 0, g);
   body.castShadow = true;
-  box(w + 0.3, 0.3, d + 0.3, 0x252321, 0, h + 0.15, 0, g); // flat roof lip
-  const door = box(0.7, 1.3, 0.15, 0x1c1a18, 0, 0.65, d / 2 + 0.06, g, false);
+  box(w + 0.3, 0.3, d + 0.3, 0x4a453e, 0, h + 0.15, 0, g); // 지붕 테 — 검은 상자로 안 보이게 밝게
+  box(0.7, 1.3, 0.15, 0x1c1a18, 0, 0.65, d / 2 + 0.06, g, false); // 문
+  box(0.9, 0.12, 0.2, 0xcabb98, 0, 1.38, d / 2 + 0.08, g, false); // 문 상인방(석회석)
+  // 창: 따뜻한 불빛 한 점 — 마을에 사람이 산다
+  const win = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.42, 0.5),
+    new THREE.MeshBasicMaterial({ color: 0xe8c988 })
+  );
+  win.position.set(w / 2 + 0.03, h * 0.55, (Math.random() - 0.5) * (d * 0.4));
+  win.rotation.y = Math.PI / 2;
+  g.add(win);
   g.position.set(x, 0, z);
   g.rotation.y = rotY;
   scene.add(g);
@@ -949,6 +1050,15 @@ legL.position.set(-0.24, 0.95, 0);
 legR.position.set(0.24, 0.95, 0);
 legL.castShadow = legR.castShadow = true;
 player.add(legL, legR);
+// 팔: 어깨에서 걸음에 맞춰 다리와 반대로 흔들린다
+const armGeo = new THREE.BoxGeometry(0.22, 0.95, 0.22);
+armGeo.translate(0, -0.42, 0);
+const armL = new THREE.Mesh(armGeo, lambert(COLORS.robe));
+const armR = armL.clone();
+armL.position.set(-0.62, 2.35, 0);
+armR.position.set(0.62, 2.35, 0);
+armL.castShadow = armR.castShadow = true;
+player.add(armL, armR);
 player.scale.setScalar(0.58);
 player.position.set(-30, 0, -112);
 player.rotation.y = 0;
@@ -1135,6 +1245,105 @@ const gulls = [];
       flap: 0, gliding: Math.random() < 0.5, st: 1 + Math.random() * 3,
     });
   }
+}
+
+/* ---------------- 하늘: 해 · 달 · 별 · 구름 ----------------
+   지역의 시간(warmth)에 따라 해와 구름은 낮에, 달과 별은 예루살렘의
+   밤에 떠오른다. 전부 프로시저럴 — 파일 에셋 없음. */
+
+function radialSprite(stops, size = 256) {
+  const [cv, c] = canvas2d(size, size);
+  const g = c.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  for (const [k, col] of stops) g.addColorStop(k, col);
+  c.fillStyle = g;
+  c.fillRect(0, 0, size, size);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: false, opacity: 0 }));
+}
+const sunSprite = radialSprite([[0, 'rgba(255,248,224,1)'], [0.14, 'rgba(255,242,205,0.9)'], [0.4, 'rgba(250,232,185,0.3)'], [1, 'rgba(250,232,185,0)']]);
+sunSprite.scale.setScalar(120);
+sunSprite.renderOrder = -10;
+scene.add(sunSprite);
+const moonSprite = radialSprite([[0, 'rgba(235,240,250,1)'], [0.1, 'rgba(225,232,246,0.95)'], [0.16, 'rgba(215,224,242,0.25)'], [1, 'rgba(215,224,242,0)']]);
+moonSprite.scale.setScalar(60);
+moonSprite.renderOrder = -10;
+scene.add(moonSprite);
+const SUN_DIR = new THREE.Vector3(0.55, 0.5, 0.42).normalize();
+const MOON_DIR = new THREE.Vector3(-0.4, 0.55, -0.5).normalize();
+
+// 별밭: 위쪽 반구에 뿌린 점들 — 밤에만 배어 나온다
+const stars = (() => {
+  const N = 380;
+  const pos = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const alt = 0.12 + Math.random() * 0.85; // 지평선 위
+    const r = 760;
+    pos[i * 3] = Math.cos(a) * Math.cos(alt * Math.PI / 2) * r;
+    pos[i * 3 + 1] = Math.sin(alt * Math.PI / 2) * r;
+    pos[i * 3 + 2] = Math.sin(a) * Math.cos(alt * Math.PI / 2) * r;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const p = new THREE.Points(geo, new THREE.PointsMaterial({
+    color: 0xe8ecf5, size: 1.7, sizeAttenuation: false, transparent: true, opacity: 0, fog: false, depthWrite: false,
+  }));
+  p.renderOrder = -11;
+  scene.add(p);
+  return p;
+})();
+
+// 구름: 낮 하늘을 흐르는 반투명 무리
+const clouds = [];
+{
+  const cloudTex = () => {
+    const [cv, c] = canvas2d(256, 128);
+    for (let i = 0; i < 9; i++) {
+      const x = 40 + Math.random() * 176, y = 46 + Math.random() * 40, r = 20 + Math.random() * 30;
+      const g = c.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, 'rgba(246,241,228,0.5)');
+      g.addColorStop(1, 'rgba(246,241,228,0)');
+      c.fillStyle = g;
+      c.fillRect(0, 0, 256, 128);
+    }
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  };
+  const texes = [cloudTex(), cloudTex(), cloudTex()];
+  for (let i = 0; i < 6; i++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: texes[i % 3], transparent: true, depthWrite: false, fog: false, opacity: 0 }));
+    const w = 80 + Math.random() * 70;
+    sp.scale.set(w, w * 0.4, 1);
+    sp.position.set(-300 + Math.random() * 600, 150 + Math.random() * 50, -260 + Math.random() * 520);
+    sp.renderOrder = -9;
+    scene.add(sp);
+    clouds.push({ sp, speed: 0.8 + Math.random() * 0.9, peak: 0.35 + Math.random() * 0.2 });
+  }
+}
+
+// 원경 산맥: 지평선을 채우는 실루엣 — 안개가 깊이를 만들어 준다
+{
+  const mtn = (x, z, r, h, col) => {
+    const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 7), new THREE.MeshLambertMaterial({ color: col, flatShading: true }));
+    m.position.set(x, h / 2 - 2, z);
+    m.rotation.y = Math.random();
+    scene.add(m);
+  };
+  // 동편 산줄기 (요단 건너) — 멀리, 낮게, 안개에 잠기도록
+  for (let i = 0; i < 9; i++) {
+    const z = -260 + i * 62 + Math.random() * 24;
+    mtn(190 + Math.random() * 60, z, 30 + Math.random() * 20, 16 + Math.random() * 14, 0xbdb197);
+  }
+  // 북쪽 헤르몬 산 — 가이사랴 빌립보 뒤 지평선에
+  mtn(60, -340, 46, 30, 0xc4bcac);
+  mtn(-20, -330, 36, 20, 0xbdb197);
+  // 남쪽 유대 광야
+  for (let i = 0; i < 4; i++) mtn(-50 + i * 52, 300 + Math.random() * 30, 34, 13 + Math.random() * 10, 0xb5a888);
+  // 로마 뒤편 언덕
+  mtn(-330, 30, 40, 18, 0xbdb197);
+  mtn(-360, 120, 44, 22, 0xb5ab93);
 }
 
 /* ---------------- day/night by region, and the finale's gold ---------------- */
@@ -1733,8 +1942,15 @@ function updateVoyage(dt) {
   const eased = u * u * (3 - 2 * u);
   const pos = voyage.curve.getPoint(eased);
   const ahead = voyage.curve.getPoint(Math.min(1, eased + 0.01));
-  voyageBoat.position.set(pos.x, Math.sin(voyage.t * 1.4) * 0.15, pos.z);
+  // 항해 중간, 큰 바다의 풍랑 — 배가 크게 흔들린다
+  const stormK = Math.max(0, 1 - Math.abs(u - 0.5) / 0.22);
+  if (stormK > 0.5 && !voyage.stormed) {
+    voyage.stormed = true;
+    audio.play('windRush', { gain: 0.35 });
+  }
+  voyageBoat.position.set(pos.x, Math.sin(voyage.t * 1.4) * (0.15 + stormK * 0.5), pos.z);
   voyageBoat.rotation.y = Math.atan2(ahead.x - pos.x, ahead.z - pos.z);
+  voyageBoat.rotation.z = Math.sin(voyage.t * 2.6) * 0.16 * stormK;
   player.position.set(pos.x, 0, pos.z);
   if (voyage.t >= voyage.dur) {
     voyage = null;
@@ -1997,6 +2213,19 @@ function splashAt(x, z, big = false) {
   splashRings.push({ m: ring, t: 0, s: big ? 3.4 : 1.8 });
   audio.play('splash', { gain: big ? 0.4 : 0.24 });
 }
+// 달릴 때 이는 흙먼지
+const dustPuffs = [];
+let dustTimer = 0;
+let ambientFishTimer = 6;
+const dustMat = new THREE.MeshBasicMaterial({ color: 0xcbb98e, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide });
+function dustAt(x, z) {
+  const m = new THREE.Mesh(new THREE.CircleGeometry(0.28, 8), dustMat.clone());
+  m.rotation.x = -Math.PI / 2;
+  m.position.set(x, 0.12, z);
+  scene.add(m);
+  dustPuffs.push({ m, t: 0 });
+}
+
 const fishJumps = [];
 const fishMat = new THREE.MeshLambertMaterial({ color: 0xc7d2d6 });
 function fishBurst(x, z, n = 14) {
@@ -2060,6 +2289,15 @@ function updateNetFx(dt) {
     if (k >= 1) { scene.remove(s.m); splashRings.splice(i, 1); continue; }
     s.m.scale.setScalar(1 + k * s.s);
     s.m.material.opacity = 0.8 * (1 - k);
+  }
+  for (let i = dustPuffs.length - 1; i >= 0; i--) {
+    const p = dustPuffs[i];
+    p.t += dt;
+    const k = p.t / 0.55;
+    if (k >= 1) { scene.remove(p.m); dustPuffs.splice(i, 1); continue; }
+    p.m.scale.setScalar(1 + k * 2.2);
+    p.m.position.y = 0.12 + k * 0.3;
+    p.m.material.opacity = 0.5 * (1 - k);
   }
   for (let i = fishJumps.length - 1; i >= 0; i--) {
     const f = fishJumps[i];
@@ -2197,6 +2435,132 @@ flows['fourth-watch'] = {
   label() { return '새벽 네 시 · 이야기 읽기'; },
   advance(marker) { openCard(marker); },
   remoteHint: '물가의 붉은 깃발이 걸린 배에 올라야 갈 수 있어요.',
+};
+
+// ---- 마을 사람들: 가버나움(2번)과 오순절(12번)에서 모여드는 무리 ----
+function villager(x, z) {
+  const g = new THREE.Group();
+  const robe = new THREE.Mesh(
+    new THREE.ConeGeometry(0.55, 1.9, 8),
+    lambert([0x8a7458, 0x6e5f49, 0x7d6a52, 0x5d5142][Math.floor(Math.random() * 4)])
+  );
+  robe.position.y = 0.95;
+  robe.castShadow = true;
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.36, 9, 7), lambert(0xc99a72));
+  head.position.y = 2.2;
+  g.add(robe, head);
+  g.scale.setScalar(0.55);
+  g.position.set(x, 0, z);
+  scene.add(g);
+  return g;
+}
+function makeCrowd(spots) {
+  return spots.map(([x, z]) => ({ g: villager(x, z), x, z, tx: x, tz: z, ph: Math.random() * 6 }));
+}
+function sendCrowd(crowd, cx, cz, rMin, rMax) {
+  crowd.forEach((p, i) => {
+    const a = (i / crowd.length) * Math.PI * 2 + Math.random() * 0.5;
+    const r = rMin + Math.random() * (rMax - rMin);
+    p.tx = cx + Math.cos(a) * r;
+    p.tz = cz + Math.sin(a) * r;
+  });
+}
+function updateCrowd(crowd, dt, t) {
+  for (const p of crowd) {
+    const dx = p.tx - p.g.position.x, dz = p.tz - p.g.position.z;
+    const d = Math.hypot(dx, dz);
+    if (d > 0.15) {
+      p.g.position.x += (dx / d) * Math.min(d, 2.2 * dt);
+      p.g.position.z += (dz / d) * Math.min(d, 2.2 * dt);
+      p.g.rotation.y = Math.atan2(dx, dz);
+      p.g.position.y = Math.abs(Math.sin(t * 7 + p.ph)) * 0.05;
+    } else {
+      p.g.position.y = 0;
+    }
+  }
+}
+// 가버나움: 마을에 흩어져 있다가, 다가가면 "온 동네가 문 앞에" 모여든다 (막 1:33)
+const capernaumCrowd = makeCrowd([
+  [-18, -160], [-14, -164], [-6, -166], [-1, -160], [-3, -152], [-17, -149], [-8, -147], [-13, -155],
+]);
+let crowdCalled = false;
+// 오순절: 외침에 모여드는 무리
+const pentecostCrowd = makeCrowd([
+  [-10, 100], [14, 102], [12, 122], [-8, 124], [-14, 112], [16, 112], [-4, 96], [8, 96], [0, 126], [-16, 122],
+]);
+
+// ---- 오순절(12번): 바람 · 불의 혀 · 일어서서 외치다 ----
+const flameFalls = [];
+function flameFallAt(x, z) {
+  const m = new THREE.Mesh(
+    new THREE.ConeGeometry(0.22, 0.65, 7),
+    new THREE.MeshBasicMaterial({ color: 0xff9a3a, transparent: true, opacity: 0.95, fog: false })
+  );
+  m.position.set(x, 9, z);
+  scene.add(m);
+  flameFalls.push({ m, t: 0, x, z });
+}
+function updateFlameFalls(dt, t) {
+  for (let i = flameFalls.length - 1; i >= 0; i--) {
+    const f = flameFalls[i];
+    f.t += dt;
+    if (f.t < 1.6) {
+      const k = f.t / 1.6;
+      f.m.position.y = 9 - (9 - 1.6) * (k * k * (3 - 2 * k));
+      f.m.position.x = f.x + Math.sin(t * 6 + i) * 0.15;
+    } else if (f.t < 4.6) {
+      f.m.position.y = 1.6 + Math.sin(t * 9 + i) * 0.08;
+      const s = 0.9 + Math.sin(t * 12 + i) * 0.15;
+      f.m.scale.set(s, s, s);
+    } else {
+      f.m.material.opacity = Math.max(0, 0.95 - (f.t - 4.6) * 1.4);
+      if (f.m.material.opacity <= 0) { scene.remove(f.m); flameFalls.splice(i, 1); }
+    }
+  }
+}
+flows.pentecost = {
+  step: 0,
+  label() { return this.step === 0 ? '🕊 한곳에 모이다' : '📣 일어서서 외치다'; },
+  advance(marker) {
+    if (this.step === 0) {
+      this.step = 1;
+      flowBusy = true;
+      audio.play('windRush', { gain: 0.4 });
+      voyageCaptionEl.textContent = '급하고 강한 바람 같은 소리가 하늘로부터 — 불의 혀처럼 갈라지는 것들이 각 사람 위에 내려앉았다.';
+      voyageCaptionEl.classList.remove('hidden');
+      voyageCaptionEl.style.opacity = '1';
+      flameFallAt(player.position.x, player.position.z);
+      for (let i = 0; i < 9; i++) {
+        const a = (i / 9) * Math.PI * 2;
+        flameFallAt(player.position.x + Math.cos(a) * (1.5 + Math.random() * 2), player.position.z + Math.sin(a) * (1.5 + Math.random() * 2));
+      }
+      setTimeout(() => {
+        voyageCaptionEl.style.opacity = '0';
+        setTimeout(() => voyageCaptionEl.classList.add('hidden'), 800);
+        flowBusy = false;
+      }, 4600);
+    } else {
+      showDialog('한때 여종 앞에서 떨던 사람이, 무리 앞에 일어섰다', '"이스라엘 사람들아, 이 말을 들으라 —"');
+      dialogHoldButton('길게 눌러 외치기 · "이 예수를 하나님이 살리셨다. 우리가 다 그 증인이다!"', 1600, () => {
+        closeDialog();
+        sendCrowd(pentecostCrowd, marker.site.pos.x, marker.site.pos.z, 3, 6.5);
+        toast('그 말을 받아들인 사람이 — 그날에 삼천 명이나 더해졌다. (행 2:41)', 6000);
+        setTimeout(() => openCard(marker), 2600);
+      });
+    }
+  },
+};
+
+// ---- 바티칸 언덕(14번): 게임화하지 않는다 — 조용히 서는 것이 전부 ----
+flows.basilica = {
+  label() { return '🕯 무덤 앞에 서다'; },
+  advance(marker) {
+    showDialog('바티칸 언덕', '어부는 여기 묻혔다.');
+    dialogHoldButton('길게 눌러 잠시 머물기', 2200, () => {
+      closeDialog();
+      openCard(marker);
+    });
+  },
 };
 
 // ---- 겟세마네: 깨어 있으려 해도 감기는 눈 (막 14:37) ----
@@ -2497,6 +2861,16 @@ function animate() {
   const swing = moving > 0.01 ? 0.62 : 0;
   legL.rotation.x = Math.sin(walkPhase) * swing;
   legR.rotation.x = -Math.sin(walkPhase) * swing;
+  armL.rotation.x = -Math.sin(walkPhase) * swing * 0.8;
+  armR.rotation.x = Math.sin(walkPhase) * swing * 0.8;
+  // 달릴 때 발밑 흙먼지
+  if (running && moving > 0.01) {
+    dustTimer -= dt;
+    if (dustTimer <= 0) {
+      dustTimer = 0.16;
+      dustAt(player.position.x - dirX * 0.5, player.position.z - dirZ * 0.5);
+    }
+  }
 
   // 물 위 걷기(3번): 빛의 길 위에서만 발동. 멈추면 바람을 무서워하듯 가라앉는다.
   // 카드가 열려 있을 때(모달)는 가라앉지 않는다.
@@ -2580,6 +2954,23 @@ function animate() {
   sun.target.position.set(player.position.x, 0, player.position.z);
 
   if (!finale && !waterWalk) applyWarmth(warmthOverride ?? regionWarmth(player.position.x, player.position.z));
+
+  // --- 하늘: 시간에 따라 해·달·별·구름이 배어 나오고 스러진다 ---
+  const chartUp = state.view === 'chart';
+  const dayK = Math.max(0, Math.min(1, (duskW - 0.35) / 0.4));   // 낮의 정도
+  const nightK = Math.max(0, Math.min(1, (0.4 - duskW) / 0.3));  // 밤의 정도
+  sunSprite.position.copy(player.position).addScaledVector(SUN_DIR, 820);
+  sunSprite.material.opacity += ((chartUp ? 0 : 0.95 * dayK) - sunSprite.material.opacity) * Math.min(1, dt * 3);
+  moonSprite.position.copy(player.position).addScaledVector(MOON_DIR, 780);
+  moonSprite.material.opacity += ((chartUp ? 0 : 0.9 * nightK) - moonSprite.material.opacity) * Math.min(1, dt * 3);
+  stars.position.copy(player.position);
+  stars.rotation.y = t * 0.004;
+  stars.material.opacity += ((chartUp ? 0 : 0.9 * nightK) - stars.material.opacity) * Math.min(1, dt * 2);
+  for (const cl of clouds) {
+    cl.sp.position.x += cl.speed * dt;
+    if (cl.sp.position.x > 320) cl.sp.position.x = -320;
+    cl.sp.material.opacity += ((chartUp ? 0 : cl.peak * (0.35 + 0.65 * dayK)) - cl.sp.material.opacity) * Math.min(1, dt * 2);
+  }
 
   // near = 방문 프롬프트용 가장 가까운 표지 / target = 나침반용, 이야기 순서(번호) 다음 미방문지
   let near = null, nearD = 8, target = null, targetNum = Infinity;
@@ -2756,6 +3147,36 @@ function animate() {
   for (const f of torches) {
     const k = 0.8 + Math.sin(t * 13 + f.position.x) * 0.2;
     f.scale.set(k, 0.9 + Math.sin(t * 17 + f.position.z) * 0.2, k);
+  }
+
+  // 나무는 바람에 살랑인다
+  for (let i = 0; i < swayers.length; i++) {
+    const s = swayers[i];
+    s.g.rotation.z = Math.sin(t * 1.2 + s.ph) * 0.035;
+  }
+
+  // 마을 사람들: 가버나움의 무리는 다가가면 문 앞으로 모여든다 (막 1:33)
+  if (state.started && !crowdCalled && !markerById['capernaum-house'].visited) {
+    const dHouse = Math.hypot(player.position.x - markerById['capernaum-house'].site.pos.x, player.position.z - markerById['capernaum-house'].site.pos.z);
+    if (dHouse < 22) {
+      crowdCalled = true;
+      sendCrowd(capernaumCrowd, -10, -155.4, 2.4, 4.4);
+      toast('해가 저물자 — 온 동네가 문 앞에 모여들었다. (막 1:33)', 5500);
+    }
+  }
+  updateCrowd(capernaumCrowd, dt, t);
+  updateCrowd(pentecostCrowd, dt, t);
+  updateFlameFalls(dt, t);
+
+  // 호수의 물고기가 이따금 뛴다 (호수 근처에 있을 때만)
+  ambientFishTimer -= dt;
+  if (ambientFishTimer <= 0) {
+    ambientFishTimer = 5 + Math.random() * 8;
+    const dLake = Math.hypot(player.position.x - 0, player.position.z + 129);
+    if (dLake < 70) {
+      const a = Math.random() * Math.PI * 2, r = Math.random() * 16;
+      fishBurst(Math.cos(a) * r, -129 + Math.sin(a) * r * 0.85, 1);
+    }
   }
 
   // 낙타 대상: 남쪽 요단 길을 느릿느릿 순회
