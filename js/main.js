@@ -1152,6 +1152,7 @@ function makeSheep(x, z) {
 }
 // 요단 길 가에서 풀 뜯는 양 떼와 목자
 const sheep = [];
+let shepherdG = null;
 {
   const cx = 4, cz = 30; // 남쪽 요단 길가
   for (let i = 0; i < 7; i++) {
@@ -1174,6 +1175,7 @@ const sheep = [];
   shep.position.set(cx - 6, 0, cz - 2);
   shep.scale.setScalar(0.62);
   scene.add(shep);
+  shepherdG = shep; // 잃은 양 퀘스트의 말풍선이 여기 걸린다
 }
 
 // 호수를 가로지르는 작은 돛단배 (밤낮 없이 잔잔히 오간다)
@@ -1480,7 +1482,7 @@ const SAVE_KEY = 'fisherman-chart-v1';
 const save = (() => {
   let s = {};
   try { s = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}') || {}; } catch { /* private mode */ }
-  return Object.assign({ charted: [], epilogueShown: false, muted: false, sheep: [] }, s);
+  return Object.assign({ charted: [], epilogueShown: false, muted: false, sheep: [], sheepHint: false }, s);
 })();
 function persistSave() {
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch { /* private mode */ }
@@ -2763,6 +2765,12 @@ function updateLostSheep(dt, t) {
       if (s.bleatT <= 0) {
         s.bleatT = 2.4 + Math.random() * 3;
         audio.play('bleat', { gain: Math.max(0.05, 0.19 - d * 0.011) });
+        // 처음 듣는 매애: 이게 뭔지 한 번은 알려 준다
+        if (!save.sheepHint) {
+          save.sheepHint = true;
+          persistSave();
+          toast('🐑 어디선가 양 우는 소리가… 무리에서 떨어진 잃은 양이 근처에 있어요!', 6000);
+        }
       }
       s.g.position.y = Math.abs(Math.sin(t * 4 + s.i)) * 0.08; // 안절부절
     }
@@ -2830,6 +2838,34 @@ function updateTalkers(dt) {
     const target = d < 11 && !state.modal ? 0.95 : 0;
     tk.sprite.material.opacity += (target - tk.sprite.material.opacity) * Math.min(1, dt * 4);
   }
+}
+
+// 목자의 부탁 — 잃은 양 퀘스트를 세계 안에서 알려 주는 사람 (요단 길 한복판)
+let shepherdBubble = null;
+let shepherdBubbleState = -1;
+function updateShepherdBubble(dt) {
+  if (!shepherdG) return;
+  if (!shepherdBubble) {
+    shepherdBubble = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false, opacity: 0 }));
+    shepherdBubble.position.set(0, 5.4, 0);
+    shepherdBubble.renderOrder = 6;
+    shepherdG.add(shepherdBubble);
+  }
+  const st = save.sheep.length >= 12 ? 1 : 0;
+  if (shepherdBubbleState !== st) {
+    shepherdBubbleState = st;
+    const { tex, w } = makeBubbleTexture(st === 1
+      ? '고맙네! 열두 마리가 다 돌아왔어 — 자네, 목자가 다 됐군.'
+      : '양들이 흩어졌어… 매애 소리를 따라가 열두 마리를 찾아 주게!');
+    if (shepherdBubble.material.map) shepherdBubble.material.map.dispose();
+    shepherdBubble.material.map = tex;
+    shepherdBubble.material.needsUpdate = true;
+    const h = 1.5;
+    shepherdBubble.scale.set((w / 96) * h, h, 1);
+  }
+  const d = Math.hypot(player.position.x - shepherdG.position.x, player.position.z - shepherdG.position.z);
+  const target = d < 15 && !state.modal ? 0.95 : 0;
+  shepherdBubble.material.opacity += (target - shepherdBubble.material.opacity) * Math.min(1, dt * 4);
 }
 
 // ---- 오순절(12번): 바람 · 불의 혀 · 일어서서 외치다 ----
@@ -3544,6 +3580,7 @@ function animate() {
   updateFlameFalls(dt, t);
   updateLostSheep(dt, t);
   updateTalkers(dt);
+  updateShepherdBubble(dt);
 
   // 호수의 물고기가 이따금 뛴다 (호수 근처에 있을 때만)
   ambientFishTimer -= dt;
