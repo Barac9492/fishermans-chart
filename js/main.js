@@ -587,6 +587,13 @@ const nightBoat = fishingBoat(-6, -118, 0.3);
 const shoreBoat = fishingBoat(-33, -122, -0.6); // moored where the nets were first let down
 // 물 위 걷기용 배 (3번): 물가에 대어져 있다가, 타면 호수 한가운데로 나간다
 const wwBoat = fishingBoat(WW_BOARD.x, WW_BOARD.z, Math.PI * 0.75);
+// 3번이 남아 있는 동안 돛대에 붉은 깃발이 펄럭인다 — 멀리서도 "저 배구나" 하게
+const wwFlag = new THREE.Mesh(
+  new THREE.PlaneGeometry(1.5, 0.75).translate(0.75, 0, 0),
+  new THREE.MeshBasicMaterial({ color: COLORS.red, side: THREE.DoubleSide })
+);
+wwFlag.position.set(0, 3.4, 0);
+wwBoat.add(wwFlag);
 
 // 빛의 길: 배에서 내려 표지까지, 물 위에 떠오르는 반투명 띠 (열렸을 때만 보인다)
 const lightPath = (() => {
@@ -1130,7 +1137,7 @@ window.addEventListener('keydown', (e) => {
 });
 window.addEventListener('keyup', (e) => { keys[e.code] = false; });
 
-const joy = { id: null, ox: 0, oy: 0, dx: 0, dy: 0 };
+const joy = { id: null, ox: 0, oy: 0, dx: 0, dy: 0, mag: 0 };
 const look = { id: null, lx: 0, ly: 0, sx: 0, sy: 0 };
 const joyEl = document.getElementById('joystick');
 const stickEl = document.getElementById('stick');
@@ -1151,6 +1158,7 @@ window.addEventListener('pointerdown', (e) => {
     joy.ox = e.clientX;
     joy.oy = e.clientY;
     joy.dx = joy.dy = 0;
+    joy.mag = 0;
     joyEl.classList.remove('hidden');
     joyEl.style.left = `${e.clientX - 55}px`;
     joyEl.style.top = `${e.clientY - 55}px`;
@@ -1170,7 +1178,9 @@ window.addEventListener('pointermove', (e) => {
     const cl = Math.min(len, 42);
     joy.dx = (dx / len) * (cl / 42);
     joy.dy = (dy / len) * (cl / 42);
+    joy.mag = len; // 링 바깥까지 밀었는지(달리기)는 원본 드래그 거리로 판정
     stickEl.style.transform = `translate(${(dx / len) * cl}px, ${(dy / len) * cl}px)`;
+    stickEl.classList.toggle('sprint', len > 64);
   } else if (e.pointerId === look.id && state.view === 'street') {
     cam.yaw -= (e.clientX - look.lx) * 0.0055;
     cam.height = Math.min(13, Math.max(1.5, cam.height + (e.clientY - look.ly) * 0.035));
@@ -1183,6 +1193,8 @@ function endPointer(e) {
   if (e.pointerId === joy.id) {
     joy.id = null;
     joy.dx = joy.dy = 0;
+    joy.mag = 0;
+    stickEl.classList.remove('sprint');
     joyEl.classList.add('hidden');
     if (Math.hypot(e.clientX - joy.ox, e.clientY - joy.oy) < 8) handleTap(e.clientX, e.clientY);
   }
@@ -1918,9 +1930,10 @@ function animate() {
   if (state.started && !state.modal && !voyage && !finale) {
     const [mx, mz] = moveInput();
     moving = Math.hypot(mx, mz);
-    // 달리기: Shift(키보드) 또는 조이스틱을 끝까지 밀면 1.8배
+    // 달리기: Shift(키보드), 또는 엄지를 조이스틱 링 "바깥"까지 일부러 밀었을 때만 1.8배.
+    // 링 가장자리(42px)에 대면 걷기 — 안 그러면 모바일이 상시 질주가 된다.
     running = moving > 0.01 && (keys.ShiftLeft || keys.ShiftRight
-      || (joy.id !== null && Math.hypot(joy.dx, joy.dy) > 0.9));
+      || (joy.id !== null && joy.mag > 64));
     const spd = SPEED * (running ? 1.8 : 1);
     if (moving > 0.01) {
       dirX = rightX * mx + fwdX * -mz;
@@ -2051,8 +2064,10 @@ function animate() {
     }
   }
   if (target) {
-    const dx = target.site.pos.x - player.position.x;
-    const dz = target.site.pos.z - player.position.z;
+    // 3번(물 위)은 표지가 아니라 "배"로 이끈다 — 배를 타야 갈 수 있는 곳이니까
+    const guide = (target.site.id === 'fourth-watch' && !waterWalk) ? WW_BOARD : target.site.pos;
+    const dx = guide.x - player.position.x;
+    const dz = guide.z - player.position.z;
     const rel = Math.atan2(dx * rightX + dz * rightZ, dx * fwdX + dz * fwdZ);
     needleAngle = angleLerp(needleAngle, rel, Math.min(1, dt * 9));
     compassArrow.style.transform = `rotate(${(needleAngle * 180) / Math.PI}deg)`;
@@ -2161,6 +2176,8 @@ function animate() {
   nightBoat.position.y = Math.sin(t * 0.9) * 0.05;
   shoreBoat.position.y = Math.sin(t * 0.9 + 2) * 0.05;
   if (!waterWalk) wwBoat.position.y = Math.sin(t * 0.9 + 1) * 0.05;
+  wwFlag.visible = !markerById['fourth-watch'].visited;
+  if (wwFlag.visible) wwFlag.rotation.y = Math.sin(t * 2.2) * 0.5; // 펄럭임
 
   // 양 떼: 제자리에서 살랑살랑 풀을 뜯고, 이따금 몇 걸음 옮긴다
   for (const s of sheep) {

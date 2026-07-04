@@ -553,6 +553,11 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
   background: rgba(168, 52, 31, 0.75);
   border: 1.5px solid rgba(43, 38, 32, 0.6);
 }
+/* 링 바깥까지 밀어 달리는 중 */
+#stick.sprint {
+  background: rgba(184, 144, 46, 0.9);
+  box-shadow: 0 0 14px 4px rgba(184, 144, 46, 0.5);
+}
 
 /* first-time touch guidance, ghosted over the scene */
 #touch-hint {
