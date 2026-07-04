@@ -1174,6 +1174,7 @@ window.addEventListener('keydown', (e) => {
   if (finale) { skipFinale(); return; }
   if (voyage) { skipVoyage(); return; }
   if (eclipse) { skipEclipse(); return; }
+  if (sleepFx) { resistSleep(); return; } // 겟세마네: 아무 키나 눌러 버틴다
   if (waterWalk && waterWalk.phase !== 'walk') { skipWaterWalk(); return; } // 승선/귀환 컷신은 건너뛰기, 물 위 걷기 중엔 정상 조작
   if ((e.code === 'KeyE' || e.code === 'Enter') && state.started) tryVisit();
   if (e.code === 'KeyM' && state.started) toggleView();
@@ -1193,6 +1194,7 @@ window.addEventListener('pointerdown', (e) => {
   if (finale) { skipFinale(); return; }
   if (voyage) { skipVoyage(); return; }
   if (eclipse) { skipEclipse(); return; }
+  if (sleepFx) { resistSleep(); return; } // 겟세마네: 화면 어디든 탭해서 버틴다
   if (waterWalk && waterWalk.phase === 'boarding') { skipWaterWalk(); return; }
   if (!state.started || state.modal || onUi(e)) return;
   const wantsJoy = e.pointerType === 'touch' && e.clientX < window.innerWidth * 0.45;
@@ -1587,6 +1589,8 @@ document.getElementById('card-close').addEventListener('click', () => {
   if (charted && charted.site.id === 'empty-tomb') {
     toast('"갈릴리로 가라. 전에 말씀하신 대로, 거기서 그를 보리라." (막 16:7)', 7000);
   }
+  // 긴 밤이 끝나면 아침 빛으로 돌아온다
+  if (charted && charted.site.id === 'long-night') warmthOverride = null;
 });
 
 function showEpilogue() {
@@ -2008,11 +2012,11 @@ function fishBurst(x, z, n = 14) {
     });
   }
 }
-let netCast = null; // { t, fromX, fromZ, toX, toZ, empty, onDone }
+let netCast = null; // { t, fromX, fromZ, toX, toZ, empty, fishN, onDone }
 let flowBusy = false;
-function castNet(toX, toZ, { empty, onDone }) {
+function castNet(toX, toZ, { empty, fishN, onDone }) {
   flowBusy = true;
-  netCast = { t: 0, fromX: player.position.x, fromZ: player.position.z, toX, toZ, empty, onDone };
+  netCast = { t: 0, fromX: player.position.x, fromZ: player.position.z, toX, toZ, empty, fishN, onDone };
 }
 function updateNetFx(dt) {
   if (netCast) {
@@ -2039,7 +2043,7 @@ function updateNetFx(dt) {
       netGroup.scale.setScalar(1.4 - k * 0.9);
       if (!c.empty && !c.burst) {
         c.burst = true;
-        fishBurst(c.toX, c.toZ);
+        fishBurst(c.toX, c.toZ, c.fishN || 14);
         splashAt(c.toX, c.toZ, true);
       }
     } else {
@@ -2193,6 +2197,154 @@ flows['fourth-watch'] = {
   label() { return '새벽 네 시 · 이야기 읽기'; },
   advance(marker) { openCard(marker); },
   remoteHint: '물가의 붉은 깃발이 걸린 배에 올라야 갈 수 있어요.',
+};
+
+// ---- 겟세마네: 깨어 있으려 해도 감기는 눈 (막 14:37) ----
+// 탭하면 눈꺼풀을 밀어 올리지만, 잠은 갈수록 무거워져 반드시 진다 — 각본된 실패.
+const lidTop = document.getElementById('lid-top');
+const lidBottom = document.getElementById('lid-bottom');
+let sleepFx = null;
+const SLEEP_WAKE_TEXTS = [
+  '"시몬아, 자느냐? 한 시간도 깨어 있을 수 없더냐?"',
+  '다시 오셔서 보시니 그들이 또 잔다 — 눈이 심히 피곤하였더라.',
+  '"이제는 자고 쉬어라… 그만 되었다. 때가 왔다."',
+];
+function startSleep(marker) {
+  state.modal = true;
+  sleepFx = { marker, round: 0, close: 0, t: 0, phase: 'closing' };
+  toast('한 시간만 깨어 있어라 — 눈이 감기면 화면을 탭해요!', 5000);
+}
+function resistSleep() {
+  if (sleepFx && sleepFx.phase === 'closing') sleepFx.close = Math.max(0, sleepFx.close - 0.15);
+}
+function updateSleep(dt) {
+  const s = sleepFx;
+  s.t += dt;
+  if (s.phase === 'closing') {
+    const rate = 0.1 + s.round * 0.1 + s.t * 0.035; // 잠은 갈수록 무거워진다
+    s.close = Math.min(1, s.close + rate * dt);
+    if (s.close >= 1) {
+      s.phase = 'asleep';
+      s.t = 0;
+      voyageCaptionEl.textContent = SLEEP_WAKE_TEXTS[s.round];
+      voyageCaptionEl.classList.remove('hidden');
+      voyageCaptionEl.style.opacity = '1';
+    }
+  } else if (s.phase === 'asleep') {
+    if (s.t >= 3) {
+      s.round++;
+      if (s.round < 3) {
+        s.phase = 'closing';
+        s.close = 0;
+        s.t = 0;
+        voyageCaptionEl.style.opacity = '0';
+      } else {
+        const m = s.marker;
+        sleepFx = null;
+        lidTop.style.height = lidBottom.style.height = '0';
+        voyageCaptionEl.style.opacity = '0';
+        setTimeout(() => voyageCaptionEl.classList.add('hidden'), 800);
+        openCard(m);
+      }
+    }
+  }
+  if (sleepFx) {
+    const h = sleepFx.phase === 'asleep' ? 51 : sleepFx.close * 51;
+    lidTop.style.height = `${h}vh`;
+    lidBottom.style.height = `${h}vh`;
+  }
+}
+flows.gethsemane = {
+  label() { return '🌿 깨어 기도하기'; },
+  advance(marker) { startSleep(marker); },
+};
+
+// ---- 긴 밤 (9번): 몇 번을 던져도 비어 있는 그물 — 던질 때마다 하늘이 밝아 온다 ----
+let warmthOverride = null;
+flows['long-night'] = {
+  step: 0,
+  labels: ['🕸 밤 그물 던지기', '🕸 다시 던지기', '🕸 다시… 또 다시', '🕸 마지막으로 한 번'],
+  label() { return this.labels[this.step]; },
+  advance(marker) {
+    const step = this.step;
+    warmthOverride = 0.1 + step * 0.1; // 밤 → 어스름
+    const dir = Math.atan2(0 - player.position.x, -129 - player.position.z);
+    castNet(player.position.x + Math.sin(dir) * 6, player.position.z + Math.cos(dir) * 6, {
+      empty: true,
+      onDone: () => {
+        if (step === 0) toast('…아무것도 없다.');
+        else if (step === 1) toast('…비었다. 또.');
+        else if (step === 2) toast('밤이 깊어 간다. 그물은 계속 비어 있다.');
+        else {
+          warmthOverride = 0.5; // 동틀 무렵
+          toast('동틀 무렵 — 바닷가에 누군가 서 있다…', 6000);
+          setTimeout(() => openCard(marker), 2400);
+        }
+      },
+    });
+    if (this.step < 3) this.step++;
+  },
+};
+
+// ---- 두 번째 불 (10번): 물가의 소리 → 오른편 그물 → 153마리 → 바다로 ----
+let leapFx = null;
+function updateLeapFx(dt) {
+  const l = leapFx;
+  l.t += dt;
+  const k = Math.min(1, l.t / 0.9);
+  player.position.x = l.x0 + (l.x1 - l.x0) * k;
+  player.position.z = l.z0 + (l.z1 - l.z0) * k;
+  player.position.y = Math.sin(k * Math.PI) * 1.7;
+  if (k >= 0.55 && !l.spl) {
+    l.spl = true;
+    splashAt(player.position.x, player.position.z, true);
+  }
+  if (k >= 1) {
+    leapFx = null;
+    flowBusy = false;
+    player.position.y = 0;
+    l.onDone();
+  }
+}
+flows['second-fire'] = {
+  step: 0,
+  label() { return ['🔥 새벽 바닷가에 서다', '🕸 오른편에 던지기', '🌊 바다로 뛰어들기'][this.step]; },
+  advance(marker) {
+    if (this.step === 0) {
+      this.step = 1;
+      flowBusy = true;
+      voyageCaptionEl.textContent = '"얘들아, 무얼 좀 잡았느냐?" — 물가에서 소리가 들렸다.';
+      voyageCaptionEl.classList.remove('hidden');
+      voyageCaptionEl.style.opacity = '1';
+      setTimeout(() => {
+        voyageCaptionEl.textContent = '"그물을 배 오른편에 던져라. 그러면 잡으리라."';
+        setTimeout(() => {
+          voyageCaptionEl.style.opacity = '0';
+          setTimeout(() => voyageCaptionEl.classList.add('hidden'), 800);
+          flowBusy = false;
+        }, 3000);
+      }, 3200);
+    } else if (this.step === 1) {
+      this.step = 2;
+      const dir = Math.atan2(0 - player.position.x, -129 - player.position.z);
+      castNet(player.position.x + Math.sin(dir) * 8, player.position.z + Math.cos(dir) * 8, {
+        empty: false,
+        fishN: 26,
+        onDone: () => toast('백쉰세 마리! — 그런데도 그물이 찢어지지 않았다. (요 21:11)', 6000),
+      });
+    } else {
+      flowBusy = true;
+      const dx = marker.site.pos.x - player.position.x;
+      const dz = marker.site.pos.z - player.position.z;
+      const d = Math.hypot(dx, dz) || 1;
+      leapFx = {
+        t: 0,
+        x0: player.position.x, z0: player.position.z,
+        x1: marker.site.pos.x - (dx / d) * 1.5, z1: marker.site.pos.z - (dz / d) * 1.5,
+        onDone: () => openCard(marker),
+      };
+    }
+  },
 };
 
 /* ---------------- finale: the confession, circling the dome ---------------- */
@@ -2378,6 +2530,8 @@ function animate() {
   if (voyage) updateVoyage(dt);
   if (waterWalk) updateWaterWalk(dt);
   if (eclipse) updateEclipse(dt);
+  if (sleepFx) updateSleep(dt);
+  if (leapFx) updateLeapFx(dt);
   if (finale) updateFinale(dt);
   updateNetFx(dt);
 
@@ -2425,7 +2579,7 @@ function animate() {
   sun.position.set(player.position.x + 70, 100, player.position.z + 45);
   sun.target.position.set(player.position.x, 0, player.position.z);
 
-  if (!finale && !waterWalk) applyWarmth(regionWarmth(player.position.x, player.position.z));
+  if (!finale && !waterWalk) applyWarmth(warmthOverride ?? regionWarmth(player.position.x, player.position.z));
 
   // near = 방문 프롬프트용 가장 가까운 표지 / target = 나침반용, 이야기 순서(번호) 다음 미방문지
   let near = null, nearD = 8, target = null, targetNum = Infinity;

@@ -640,6 +640,19 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
   pointer-events: none;
 }
 
+/* 겟세마네: 감기는 눈꺼풀 — 위아래에서 닫혀 온다 */
+#lid-top, #lid-bottom {
+  position: fixed;
+  left: 0;
+  right: 0;
+  height: 0;
+  z-index: 18;
+  background: #05060c;
+  pointer-events: none;
+}
+#lid-top { top: 0; border-bottom: 3px solid rgba(236, 226, 196, 0.12); }
+#lid-bottom { bottom: 0; border-top: 3px solid rgba(236, 226, 196, 0.12); }
+
 /* 장면 대화: 고백(4) · 부인(6) · 회복(11) */
 .dialog-inner {
   max-width: 460px;
