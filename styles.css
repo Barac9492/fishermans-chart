@@ -121,6 +121,9 @@ button {
 button:hover { transform: translateY(-1px); }
 button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
 
+.guide-link { margin-top: 14px; font-size: 14px; }
+.guide-link a { color: var(--ink-soft); text-decoration: underline dotted; }
+
 /* ---------- HUD ---------- */
 #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
 

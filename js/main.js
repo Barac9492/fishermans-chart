@@ -2867,8 +2867,10 @@ const lostSheep = LOST_SHEEP_SPOTS.map(([x, z], i) => {
   const band = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.14, 0.56), lambert(0xa8341f));
   band.position.set(0, 0.82, 0.34);
   g.add(band);
-  return { g, x, z, i, found: false, bleatT: Math.random() * 4, fadeT: -1 };
+  return { g, x, z, i, found: false, bleatT: Math.random() * 4, fadeT: -1, baa: null };
 });
+// 무음 양 신호 — 소리를 못 듣는 플레이어를 위한 "매애…" 말풍선 (텍스처는 하나만 공유)
+let baaBubble = null;
 const sheepChipEl = document.getElementById('sheep-chip');
 function updateSheepChip() {
   const n = save.sheep.length;
@@ -2922,6 +2924,20 @@ function updateLostSheep(dt, t) {
         }
       }
       s.g.position.y = Math.abs(Math.sin(t * 4 + s.i)) * 0.08; // 안절부절
+      if (!s.baa) {
+        // 처음 가까이 왔을 때에야 스프라이트를 만든다 (재질만 양마다, 텍스처는 공유)
+        if (!baaBubble) baaBubble = makeBubbleTexture('매애…');
+        s.baa = new THREE.Sprite(new THREE.SpriteMaterial({ map: baaBubble.tex, transparent: true, depthTest: false, opacity: 0 }));
+        s.baa.position.set(0, 4.0, 0); // 양 g.scale 0.7 감안한 로컬 높이
+        s.baa.renderOrder = 6;
+        s.baa.scale.set((baaBubble.w / 96) * 1.15, 1.15, 1);
+        s.g.add(s.baa);
+      }
+    }
+    if (s.baa) {
+      const target = !s.found && d < 15 ? 0.9 : 0;
+      s.baa.material.opacity += (target - s.baa.material.opacity) * Math.min(1, dt * 4);
+      s.baa.position.y = 4.0 + Math.sin(t * 2 + s.i) * 0.15; // 살짝 둥실
     }
     if (d < 2.8 && !state.modal && !flowBusy) collectSheep(s);
   }
@@ -2990,6 +3006,10 @@ function updateTalkers(dt) {
 }
 
 // 목자의 부탁 — 잃은 양 퀘스트를 세계 안에서 알려 주는 사람 (요단 길 한복판)
+// 양 인덱스 → 지역 이름 (LOST_SHEEP_SPOTS 순서 그대로) — 남은 양의 방향 힌트용
+const SHEEP_REGIONS = ['갈릴리 물가', '갈릴리 물가', '갈릴리 물가', '갈릴리 물가',
+  '가이사랴 절벽', '요단 길가', '요단 길가', '요단 길가',
+  '예루살렘 언저리', '예루살렘 언저리', '예루살렘 언저리', '로마'];
 let shepherdBubble = null;
 let shepherdBubbleState = -1;
 function updateShepherdBubble(dt) {
@@ -3000,12 +3020,26 @@ function updateShepherdBubble(dt) {
     shepherdBubble.renderOrder = 6;
     shepherdG.add(shepherdBubble);
   }
-  const st = save.sheep.length >= 12 ? 1 : 0;
-  if (shepherdBubbleState !== st) {
-    shepherdBubbleState = st;
-    const { tex, w } = makeBubbleTexture(st === 1
-      ? '고맙네! 열두 마리가 다 돌아왔어 — 자네, 목자가 다 됐군.'
-      : '양들이 흩어졌어… 매애 소리를 따라가 열두 마리를 찾아 주게!');
+  const n = save.sheep.length;
+  let key, text;
+  if (n >= 12) {
+    key = 'done';
+    text = '고맙네! 열두 마리가 다 돌아왔어 — 자네, 목자가 다 됐군.';
+  } else if (n === 0) {
+    key = 'ask';
+    text = '양들이 흩어졌어… 매애 소리를 따라가 열두 마리를 찾아 주게!';
+  } else {
+    // 아직 못 찾은 첫 양의 지역으로 힌트 — 11/12에서 막히지 않게
+    let region = '';
+    for (let i = 0; i < SHEEP_REGIONS.length; i++) {
+      if (!save.sheep.includes(i)) { region = SHEEP_REGIONS[i]; break; }
+    }
+    key = 'hint:' + region;
+    text = `고맙네! 그런데 아직 ${region} 쪽에서 우는 소리가 들린다는군…`;
+  }
+  if (shepherdBubbleState !== key) {
+    shepherdBubbleState = key;
+    const { tex, w } = makeBubbleTexture(text);
     if (shepherdBubble.material.map) shepherdBubble.material.map.dispose();
     shepherdBubble.material.map = tex;
     shepherdBubble.material.needsUpdate = true;
