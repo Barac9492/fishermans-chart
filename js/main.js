@@ -587,6 +587,75 @@ landmarkInfo(
   scene.add(grass);
 }
 
+// 들의 백합 (마 6:28): 갈릴리 들판의 꽃 무더기 — 탭하면 말씀 한 줄, 수집도 저장도 없다
+const LILY_LINES = [
+  '🌸 “들의 백합화가 어떻게 자라는가 생각하여 보라 — 수고도 아니하고 길쌈도 아니하느니라.” (마 6:28)',
+  '🌸 “솔로몬의 모든 영광으로도 입은 것이 이 꽃 하나만 같지 못하였느니라.” (마 6:29)',
+  '🌸 “오늘 있다가 내일 아궁이에 던져지는 들풀도 이렇게 입히시거든, 하물며 너희일까 보냐.” (마 6:30)',
+];
+let lilyIdx = 0;
+{
+  const HEAD_COLORS = [0xf3f0e4, 0xe8c95a, 0xb87ac8, 0xe08a9b];
+  // 갈릴리의 길 중심선들 — 꽃은 길을 비켜서 핀다 (대략이면 충분)
+  const LILY_ROADS = [
+    [[0, -100], [6, -60]],
+    [[0, -154], [10, -168]], [[10, -168], [16, -183]],
+    [[-10, -156], [-30, -100]],
+  ];
+  const lakeDist = (x, z) => {
+    let d = Infinity;
+    for (let i = 0; i < LAKE.length; i++) {
+      const [ax, az] = LAKE[i], [bx, bz] = LAKE[(i + 1) % LAKE.length];
+      d = Math.min(d, distToSegment(x, z, ax, az, bx, bz));
+    }
+    return d;
+  };
+  const paint = (g, hex) => { // geometry 전체를 한 색의 vertex color로 칠한다
+    const c = new THREE.Color(hex);
+    const n = g.attributes.position.count;
+    const arr = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { arr[i * 3] = c.r; arr[i * 3 + 1] = c.g; arr[i * 3 + 2] = c.b; }
+    g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+    return g;
+  };
+  const geos = [];
+  for (let k = 0; k < 14; k++) {
+    const cx = rnd(-50, 55), cz = rnd(-200, -95);
+    if (!onHolyLand(cx, cz) || lakeDist(cx, cz) < 8) continue;
+    if (LILY_ROADS.some(([a, b]) => distToSegment(cx, cz, a[0], a[1], b[0], b[1]) < 3)) continue;
+    const n = 5 + Math.floor(Math.random() * 5);
+    for (let f = 0; f < n; f++) {
+      const x = cx + rnd(-1.1, 1.1), z = cz + rnd(-1.1, 1.1);
+      const h = rnd(0.4, 0.6);
+      for (const ry of [0, Math.PI / 2]) { // 줄기: 가는 초록 십자 쿼드
+        const g = new THREE.PlaneGeometry(0.035, h);
+        g.rotateY(ry + Math.random() * 0.5);
+        g.translate(x, h / 2, z);
+        geos.push(paint(g, 0x7c8f56));
+      }
+      const head = new THREE.CircleGeometry(0.09, 8); // 꽃머리: 작은 팔각 원판
+      head.rotateX(-Math.PI / 2 + rnd(-0.3, 0.3));
+      head.translate(x, h, z);
+      geos.push(paint(head, HEAD_COLORS[Math.floor(Math.random() * HEAD_COLORS.length)]));
+    }
+    // 무더기마다 투명 히트박스 하나 — 탭하면 말씀
+    const hit = new THREE.Mesh(
+      new THREE.BoxGeometry(2.4, 2, 2.4),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+    );
+    hit.position.set(cx, 1, cz);
+    hit.userData.lilyToy = true;
+    scene.add(hit);
+    tapTargets.push(hit);
+  }
+  if (geos.length) {
+    scene.add(new THREE.Mesh(
+      mergeGeometries(geos, false),
+      new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })
+    ));
+  }
+}
+
 /* ---------------- trees & vegetation ---------------- */
 
 const swayers = []; // 바람에 흔들리는 나무들
@@ -1075,6 +1144,25 @@ player.position.set(-30, 0, -112);
 player.rotation.y = 0;
 scene.add(player);
 
+// 발의 등불 (시 119:105): 예루살렘의 밤길에서만 손에 들려 켜진다
+const lampG = new THREE.Group();
+const lampFlame = new THREE.Mesh(
+  new THREE.ConeGeometry(0.09, 0.18, 6),
+  new THREE.MeshBasicMaterial({ color: 0xffc860 })
+);
+{
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.2, 0.16), lambert(0x4a3a28));
+  lampFlame.position.y = 0.19;
+  lampG.add(body, lampFlame);
+  lampG.position.set(0.55, 1.62, 0.28);
+  lampG.visible = false;
+  player.add(lampG);
+}
+const lampLight = new THREE.PointLight(0xf5c878, 0, 14, 2);
+lampLight.position.y = 2;
+player.add(lampLight);
+let lampSeen = false; // 첫 점등의 자막은 한 세션에 한 번
+
 camera.position.set(
   player.position.x + Math.sin(cam.yaw) * cam.dist,
   cam.height,
@@ -1398,6 +1486,7 @@ window.addEventListener('keydown', (e) => {
   if (voyage) { skipVoyage(); return; }
   if (eclipse) { skipEclipse(); return; }
   if (sleepFx) { resistSleep(); return; } // 겟세마네: 아무 키나 눌러 버틴다
+  if (sitting) { standUp(); return; } // 앉아 쉬는 중: 아무 키나 눌러 일어난다
   if (waterWalk && waterWalk.phase !== 'walk') { skipWaterWalk(); return; } // 승선/귀환 컷신은 건너뛰기, 물 위 걷기 중엔 정상 조작
   if ((e.code === 'KeyE' || e.code === 'Enter') && state.started) tryVisit();
   if (e.code === 'KeyM' && state.started) toggleView();
@@ -1418,6 +1507,7 @@ window.addEventListener('pointerdown', (e) => {
   if (voyage) { skipVoyage(); return; }
   if (eclipse) { skipEclipse(); return; }
   if (sleepFx) { resistSleep(); return; } // 겟세마네: 화면 어디든 탭해서 버틴다
+  if (sitting) { standUp(); return; } // 앉아 쉬는 중: 화면 어디든 탭하면 일어난다
   if (waterWalk && waterWalk.phase === 'boarding') { skipWaterWalk(); return; }
   if (!state.started || state.modal || onUi(e)) return;
   const wantsJoy = e.pointerType === 'touch' && e.clientX < window.innerWidth * 0.45;
@@ -1631,6 +1721,7 @@ function tryVisit() {
   if (state.modal || voyage || finale || flowBusy) return;
   if (state.boardMode) { startWaterWalk(); return; }
   if (state.sailMode) { startVoyage(state.sailMode === 'back'); return; }
+  if (state.sitMode) { sitDown(state.sitMode); return; } // 쉼터: 앉아서 쉰다
   if (!state.nearSite) return;
   const m = state.nearSite;
   if (!unlocked(m)) { lockedToast(); return; } // E키로 눌러도 순서는 지킨다
@@ -1670,6 +1761,10 @@ function handleTap(cx, cy) {
       audio.play('rooster', { gain: 0.18 });
       buzz(12);
       roosterHopT = 0;
+      return;
+    }
+    if (ud.lilyToy) { // 들의 백합: 탭할 때마다 말씀 한 줄 (마 6:28–30)
+      toast(LILY_LINES[lilyIdx++ % LILY_LINES.length], 5500);
       return;
     }
     openLandmarkCard(ud.landmark);
@@ -2967,6 +3062,70 @@ function updateSparks(dt) {
   }
 }
 
+/* ---------------- 앉기 (쉼) — 이야기를 겪은 자리에서만 앉아 쉴 수 있다 ---------------- */
+
+const REST_SPOTS = [
+  { x: 10, z: 120, gate: 'first-fire', label: '🔥 불가에 앉기' },
+  { x: 27, z: -141, gate: 'second-fire', label: '🔥 불가에 앉기' },
+  { x: 44, z: 100, gate: 'gethsemane', label: '🌿 감람나무 아래 앉기' },
+];
+const REST_VERSES = [
+  '“여호와는 나의 목자시니 내게 부족함이 없으리로다.” (시 23:1)',
+  '“가만히 있어 내가 하나님 됨을 알지어다.” (시 46:10)',
+  '“나의 영혼아 잠잠히 하나님만 바라라.” (시 62:5)',
+  '“여호와께서 그의 사랑하시는 자에게는 잠을 주시는도다.” (시 127:2)',
+];
+let sitting = null; // { t, spot, versed, starred }
+function sitDown(spot) {
+  sitting = { t: 0, spot, versed: false, starred: false };
+  cam.dist = 22; // smoothDist가 알아서 서서히 물러난다
+}
+function standUp() {
+  sitting = null;
+  cam.dist = 11;
+  hideCaption();
+}
+function updateSitting(dt) {
+  sitting.t += dt;
+  if (sitting.t >= 5 && !sitting.versed) {
+    sitting.versed = true;
+    showCaption(REST_VERSES[Math.floor(Math.random() * REST_VERSES.length)]);
+    setTimeout(() => { if (sitting) hideCaption(); }, 4500);
+  }
+  if (sitting.t >= 20 && !sitting.starred) {
+    sitting.starred = true;
+    spawnShootingStar();
+  }
+}
+
+// 별똥별: 오래 앉아 쉬는 사람만 보는 하늘의 선물
+const shootingStars = [];
+function spawnShootingStar() {
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: sparkTex, color: 0xeef2ff, transparent: true, depthWrite: false, opacity: 0.95,
+  }));
+  sp.scale.set(7, 0.5, 1); // 가로로 길게 — 흐르는 획
+  sp.position.set(
+    player.position.x + rnd(-60, 60),
+    90 + rnd(0, 30),
+    player.position.z + rnd(-80, -20)
+  );
+  scene.add(sp);
+  const side = Math.random() < 0.5 ? 1 : -1; // 좌우 어느 쪽으로든 흐른다
+  shootingStars.push({ sp, t: 0, vx: rnd(-65, -45) * side, vy: -18, vz: 15 });
+}
+function updateShootingStars(dt) {
+  for (let i = shootingStars.length - 1; i >= 0; i--) {
+    const s = shootingStars[i];
+    s.t += dt;
+    if (s.t >= 1.3) { scene.remove(s.sp); shootingStars.splice(i, 1); continue; }
+    s.sp.position.x += s.vx * dt;
+    s.sp.position.y += s.vy * dt;
+    s.sp.position.z += s.vz * dt;
+    s.sp.material.opacity = 0.95 * (1 - s.t / 1.3);
+  }
+}
+
 // 뜰의 수탉: 몇 번을 탭해도 성실하게 울어 주는 장난감 (6번 곁)
 let roosterHopT = 1;
 const roosterG = (() => {
@@ -3437,7 +3596,7 @@ function animate() {
   const fwdX = -Math.sin(effYaw), fwdZ = -Math.cos(effYaw);
   const rightX = Math.cos(effYaw), rightZ = -Math.sin(effYaw);
   let moving = 0, dirX = 0, dirZ = 0, running = false;
-  if (state.started && !state.modal && !voyage && !finale) {
+  if (state.started && !state.modal && !voyage && !finale && !sitting) {
     const [mx, mz] = moveInput();
     moving = Math.hypot(mx, mz);
     // 달리기: Shift(키보드), 또는 엄지를 조이스틱 링 "바깥"까지 일부러 밀었을 때만 1.8배.
@@ -3460,10 +3619,15 @@ function animate() {
   }
   walkPhase += dt * (4 + moving * 9) * (running ? 1.5 : 1);
   const swing = moving > 0.01 ? 0.62 : 0;
-  legL.rotation.x = Math.sin(walkPhase) * swing;
-  legR.rotation.x = -Math.sin(walkPhase) * swing;
-  armL.rotation.x = -Math.sin(walkPhase) * swing * 0.8;
-  armR.rotation.x = Math.sin(walkPhase) * swing * 0.8;
+  if (sitting) { // 앉은 자세: 다리는 앞으로 접고 팔은 무릎 위에
+    legL.rotation.x = legR.rotation.x = 1.4;
+    armL.rotation.x = armR.rotation.x = 0.55;
+  } else {
+    legL.rotation.x = Math.sin(walkPhase) * swing;
+    legR.rotation.x = -Math.sin(walkPhase) * swing;
+    armL.rotation.x = -Math.sin(walkPhase) * swing * 0.8;
+    armR.rotation.x = Math.sin(walkPhase) * swing * 0.8;
+  }
   // 달릴 때 발밑 흙먼지
   if (running && moving > 0.01) {
     dustTimer -= dt;
@@ -3488,7 +3652,7 @@ function animate() {
     // 각본된 침몰·구원 중에는 updateWaterWalk가 직접 깊이를 다룬다
     waterWalkSink += (0 - waterWalkSink) * Math.min(1, dt * 2);
   }
-  player.position.y = (moving > 0.01 ? Math.abs(Math.sin(walkPhase)) * 0.1 : 0) - waterWalkSink;
+  player.position.y = sitting ? -0.38 : (moving > 0.01 ? Math.abs(Math.sin(walkPhase)) * 0.1 : 0) - waterWalkSink;
   // 가라앉을수록 화면 가장자리가 어두워진다
   if (sinkVeil) sinkVeil.style.opacity = String(Math.min(0.72, waterWalkSink * 1.4));
 
@@ -3510,6 +3674,7 @@ function animate() {
   if (leapFx) updateLeapFx(dt);
   if (netsRide) updateNetsRide(dt);
   if (finale) updateFinale(dt);
+  if (sitting) updateSitting(dt);
   updateNetFx(dt);
 
   if (finale) {
@@ -3575,6 +3740,23 @@ function animate() {
     cl.sp.material.opacity += ((chartUp ? 0 : cl.peak * (0.35 + 0.65 * dayK)) - cl.sp.material.opacity) * Math.min(1, dt * 2);
   }
 
+  // 발의 등불: 예루살렘의 밤길(z > 60)에서만 — 갈릴리의 긴 밤과 로마는 켜지 않는다
+  const lampTarget = (duskW < 0.35 && player.position.z > 60
+    && onHolyLand(player.position.x, player.position.z)) ? 1.4 : 0;
+  lampLight.intensity += (lampTarget - lampLight.intensity) * Math.min(1, dt * 2);
+  lampG.visible = lampLight.intensity > 0.05;
+  if (lampG.visible) { // 불꽃 일렁임
+    const fk = 1 + Math.sin(t * 11) * 0.18;
+    lampFlame.scale.set(fk, 0.9 + Math.sin(t * 11) * 0.2, fk);
+  }
+  if (lampTarget > 0 && !lampSeen) {
+    lampSeen = true; // 컷신·카드 중이면 자막은 생략하고 플래그만 세운다
+    if (!state.modal && !finale && !voyage && !eclipse && !sleepFx) {
+      showCaption('“주의 말씀은 내 발에 등이요 내 길에 빛이니이다.” (시 119:105)');
+      setTimeout(hideCaption, 4000);
+    }
+  }
+
   // near = 방문 프롬프트용 가장 가까운 표지 / target = 나침반용, 이야기 순서(번호) 다음 미방문지
   let near = null, nearD = 8, target = null, targetNum = Infinity;
   for (const m of markers) {
@@ -3605,7 +3787,18 @@ function animate() {
   state.sailMode = sailMode;
   // 표지 프롬프트는 앞의 이야기를 모두 마친 곳에서만 뜬다
   const nearOpen = !!near && unlocked(near);
-  const promptOn = (boardOn || sailMode || (nearOpen && state.started && !state.modal && !voyage && !finale)) && !flowBusy;
+  // 쉼터 프롬프트: 그 자리의 이야기를 이미 겪은 뒤에만 — 미방문 표지 프롬프트를 가리지 않는다
+  let sitSpot = null;
+  if (!sitting && state.started && !state.modal && !voyage && !finale && !waterWalk && !flowBusy
+    && !(nearOpen && !near.visited)) {
+    for (const s of REST_SPOTS) {
+      if (markerById[s.gate].visited
+        && Math.hypot(player.position.x - s.x, player.position.z - s.z) < 5) { sitSpot = s; break; }
+    }
+  }
+  state.sitMode = sitSpot;
+  const promptOn = (boardOn || sailMode || sitSpot
+    || (nearOpen && state.started && !state.modal && !voyage && !finale)) && !flowBusy && !sitting;
   visitBtn.classList.toggle('hidden', !promptOn);
   if (promptOn) {
     const flowNear = near && !near.visited && flows[near.site.id];
@@ -3615,7 +3808,11 @@ function animate() {
         ? (sailMode === 'back' ? '⚓ 성지로 돌아가는 배' : '⚓ 로마로 가는 배')
         : flowNear
           ? flowNear.label()
-          : `${near.shortTitle} · ${near.visited ? '다시 읽기' : '이야기 읽기'}`;
+          : (nearOpen && !near.visited)
+            ? `${near.shortTitle} · 이야기 읽기`
+            : sitSpot
+              ? sitSpot.label
+              : `${near.shortTitle} · 다시 읽기`;
     if (visitLabel.textContent !== label) visitLabel.textContent = label;
     if (!visitPulsed) {
       visitPulsed = true;
@@ -3804,6 +4001,7 @@ function animate() {
   updateTalkers(dt);
   updateShepherdBubble(dt);
   updateSparks(dt);
+  updateShootingStars(dt);
   updateJonah(dt, t);
   updatePetLamb(dt, t);
   roosterHopT += dt;
