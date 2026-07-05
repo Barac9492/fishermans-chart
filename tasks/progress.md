@@ -1,5 +1,17 @@
 # 어부의 지도 — 페이즈 체크포인트 로그
 
+## Phase: goty2-title-end (2026-07-05) — ✅ 완료
+- 목표(GOTY 스택 2/3): 게임의 액자 — 살아있는 타이틀(반투명 스크림 + 갈릴리
+  새벽 궤도 카메라 + 순차 페이드인) · 일시정지(Esc/⚙: 소리·화질 3단·2단계
+  재시작) · 완주 크레딧 롤(14곳 명단, rAF 스크롤, 스킵, reduced-motion 대응).
+- 파이프라인: plan(Fable·high) → implementer(fable·medium, 145k, 이탈 5건 로그)
+  → reviewer(sonnet·fresh, 70k, **FIX-THEN-SHIP**)
+- 리뷰 MAJOR 1건(Esc가 컷신 스킵을 삼킴) → 오케스트레이터 수정: Esc는
+  paused||canPause()일 때만 잡고 아니면 스킵 사슬로 흘려보냄.
+- 오케스트레이터 검증: 타이틀 스크린샷(세계가 뒤에서 흐름, 가독성 유지),
+  Esc 열림/닫힘·라벨(소리: 켬/화질: 자동) 확인, 콘솔 오류 0.
+- 산출물: tasks/{plan-goty2-title-end,progress-goty2,review-goty2}.md
+
 ## Phase: goty1-score (2026-07-05) — ✅ 완료
 - 목표(GOTY/PlayStation-grade 스택 1/3): 절차적 라이트모티프 음악 — 베드로
   주제가 지역·서사에 따라 갈릴리 장조 → 예루살렘 단조 → 부인 후 애가(거의
