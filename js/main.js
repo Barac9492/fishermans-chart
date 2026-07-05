@@ -76,8 +76,12 @@ const BASILICA_POS = { x: -232, z: 92 };
 /* ---------------- basic setup ---------------- */
 
 const canvas = document.getElementById('scene');
+// 터치(폰·태블릿) 기기는 GPU가 약한 편이라 렌더 해상도를 한 단계 낮춘다 —
+// 저해상도 파스텔 아트라 1.5배면 충분히 또렷하고, 발열과 배터리를 크게 아낀다
+const COARSE_POINTER = window.matchMedia('(pointer: coarse)').matches;
+const MAX_DPR = COARSE_POINTER ? 1.5 : 2;
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_DPR));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -125,7 +129,7 @@ scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff0c8, 2.4);
 sun.position.set(70, 100, 45);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.mapSize.set(COARSE_POINTER ? 1024 : 2048, COARSE_POINTER ? 1024 : 2048);
 sun.shadow.camera.far = 400;
 sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.03;
@@ -1696,7 +1700,8 @@ document.getElementById('start-btn').addEventListener('click', () => {
   state.started = true;
   audio.init();
   audio.setMuted(save.muted);
-  if (window.innerWidth < 700) document.getElementById('chart-key').removeAttribute('open');
+  // 폰에서는(가로 모드 포함) 범례를 접은 채 시작 — 화면 오른쪽을 가리지 않게
+  if (window.innerWidth < 700 || COARSE_POINTER) document.getElementById('chart-key').removeAttribute('open');
   toast(save.charted.length > 0
     ? '다시 바닷가예요. 이미 찾은 곳은 지도가 기억하고 있어요.'
     : '갈릴리 바닷가에 섰어요. 붉게 빛나는 표지가 다음 이야기예요 — 나침반과 위의 「다음」 안내를 따라가요.');
@@ -4125,11 +4130,15 @@ function animate() {
   renderer.render(scene, camera);
 }
 
-window.addEventListener('resize', () => {
+function onViewportResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, MAX_DPR));
   renderer.setSize(window.innerWidth, window.innerHeight);
-});
+}
+window.addEventListener('resize', onViewportResize);
+// iOS는 회전 직후 치수가 늦게 확정되는 일이 있어 한 박자 뒤에 한 번 더 맞춘다
+window.addEventListener('orientationchange', () => setTimeout(onViewportResize, 300));
 
 for (const id of save.charted) {
   const m = markers.find((mk) => mk.site.id === id);

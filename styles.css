@@ -4,6 +4,11 @@
   --ink-soft: #5a5142;
   --red: #a8341f;
   --gold: #b8902e;
+  /* 노치·홈 인디케이터 안전 영역 — 지원하지 않는 브라우저에서는 0 */
+  --sat: env(safe-area-inset-top, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -12,11 +17,24 @@ html, body {
   width: 100%;
   height: 100%;
   overflow: hidden;
+  /* 모바일에서 당겨서 새로고침·경계 튕김 방지 */
+  overscroll-behavior: none;
   background: var(--sand);
   font-family: 'Noto Serif KR', 'Nanum Myeongjo', Georgia, serif;
   color: var(--ink);
   -webkit-text-size-adjust: 100%;
 }
+
+/* 게임 조작 요소는 길게 눌러도 텍스트 선택·돋보기가 뜨지 않게 한다
+   (카드·대화 본문은 그대로 선택 가능) */
+#hud, #joystick, #touch-hint, #visit-btn, #toast, #voyage-caption,
+button, summary {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+/* 더블 탭 확대 지연 제거 */
+button, summary, a { touch-action: manipulation; }
 
 #scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 
@@ -31,10 +49,12 @@ html, body {
   align-items: center;
   justify-content: center;
   z-index: 30;
-  padding: 18px;
+  /* 노치·홈 인디케이터를 피해 내용을 안쪽으로 들인다 */
+  padding: calc(18px + var(--sat)) calc(18px + var(--sar)) calc(18px + var(--sab)) calc(18px + var(--sal));
   /* 내용이 화면보다 길면(작은 폰) 세로 스크롤을 허용해 버튼이 잘리지 않게 한다 */
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   background: rgba(43, 38, 32, 0.45);
   backdrop-filter: blur(2px);
 }
@@ -103,6 +123,13 @@ blockquote cite { display: block; margin-top: 8px; font-size: 0.85em; font-style
   color: var(--ink-soft);
 }
 .controls-hint b { color: var(--ink); letter-spacing: 0.08em; }
+/* 조작 안내는 기기에 맞는 것만 보여준다 — kb: 키보드+마우스, tc: 터치 */
+@media (hover: none) and (pointer: coarse) {
+  .controls-hint .kb { display: none; }
+}
+@media (hover: hover) and (pointer: fine) {
+  .controls-hint .tc { display: none; }
+}
 
 button {
   font-family: 'Noto Serif KR', Georgia, serif;
@@ -129,7 +156,7 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
 
 #hud-top {
   position: absolute;
-  top: 14px;
+  top: calc(14px + var(--sat));
   left: 50%;
   transform: translateX(-50%);
   text-align: center;
@@ -159,8 +186,8 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
 
 #chart-key {
   position: absolute;
-  top: 14px;
-  right: 14px;
+  top: calc(14px + var(--sat));
+  right: calc(14px + var(--sar));
   width: 236px;
   pointer-events: auto;
   background: rgba(236, 226, 196, 0.93);
@@ -180,7 +207,7 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
 #chart-key summary::-webkit-details-marker { display: none; }
 #chart-key summary::after { content: ' ▾'; font-size: 11px; }
 #chart-key:not([open]) summary::after { content: ' ▸'; }
-#key-list { margin: 8px 0 2px; padding-left: 0; list-style: none; max-height: 46vh; overflow-y: auto; }
+#key-list { margin: 8px 0 2px; padding-left: 0; list-style: none; max-height: 46vh; max-height: 46dvh; overflow-y: auto; overscroll-behavior: contain; }
 #key-list li {
   display: flex;
   align-items: baseline;
@@ -222,8 +249,8 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
 
 #compass {
   position: absolute;
-  bottom: 18px;
-  right: 18px;
+  bottom: calc(18px + var(--sab));
+  right: calc(18px + var(--sar));
   width: 56px;
   height: 56px;
   border: 1.5px solid var(--ink);
@@ -249,8 +276,8 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
 
 #view-btn {
   position: absolute;
-  bottom: 18px;
-  left: 18px;
+  bottom: calc(18px + var(--sab));
+  left: calc(18px + var(--sal));
   pointer-events: auto;
   margin: 0;
   font-size: 14px;
@@ -267,8 +294,8 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
 
 #mute-btn {
   position: absolute;
-  bottom: 64px;
-  left: 18px;
+  bottom: calc(64px + var(--sab));
+  left: calc(18px + var(--sal));
   pointer-events: auto;
   margin: 0;
   width: 38px;
@@ -286,7 +313,7 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
 /* 유물 보따리 — 찾은 곳마다 아이콘이 채워지는 14칸 선반 */
 #satchel {
   position: absolute;
-  bottom: 74px;
+  bottom: calc(74px + var(--sab));
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -327,8 +354,8 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
 /* 잃은 양 카운터 — 첫 마리를 찾으면 나타난다 */
 #sheep-chip {
   position: absolute;
-  bottom: 76px;
-  left: 14px;
+  bottom: calc(76px + var(--sab));
+  left: calc(14px + var(--sal));
   padding: 5px 11px;
   font-size: 14px;
   font-weight: 600;
@@ -398,7 +425,7 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
 /* ---------- visit button / toast ---------- */
 #visit-btn {
   position: fixed;
-  bottom: 26px;
+  bottom: calc(26px + var(--sab));
   left: 50%;
   transform: translateX(-50%);
   z-index: 20;
@@ -411,7 +438,7 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
 
 #toast {
   position: fixed;
-  top: 72px;
+  top: calc(72px + var(--sat));
   left: 50%;
   transform: translateX(-50%);
   z-index: 25;
@@ -431,6 +458,9 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
   position: relative;
   max-width: 560px;
   max-height: 86vh;
+  /* 모바일 주소창이 접히고 펴져도 흔들리지 않는 동적 뷰포트 높이 */
+  max-height: 86dvh;
+  overscroll-behavior: contain;
   margin: auto;
   overflow-y: auto;
   background: var(--sand);
@@ -773,7 +803,7 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
 /* ---------- voyage caption (scripted sea-crossing to Rome) ---------- */
 #voyage-caption {
   position: fixed;
-  bottom: 60px;
+  bottom: calc(60px + var(--sab));
   left: 50%;
   transform: translateX(-50%);
   z-index: 20;
@@ -787,12 +817,68 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
 }
 
 @media (max-width: 700px) {
-  #chart-key { width: 188px; font-size: 12.5px; top: 60px; }
-  #chart-key summary { font-size: 13px; }
-  #hud-top { top: 8px; }
-  .card-inner { padding: 30px 20px 24px; }
-  #compass { bottom: auto; top: 60px; left: 14px; right: auto; width: 46px; height: 46px; }
+  #chart-key { width: 188px; font-size: 12.5px; top: calc(60px + var(--sat)); right: calc(10px + var(--sar)); }
+  #chart-key summary { font-size: 13px; padding: 3px 0; }
+  #hud-top { top: calc(8px + var(--sat)); max-width: 62vw; }
+  .card-inner { padding: 24px 18px 22px; }
+  #compass { bottom: auto; top: calc(60px + var(--sat)); left: calc(10px + var(--sal)); right: auto; width: 46px; height: 46px; }
   #compass-arrow::before { top: 7px; border-left-width: 5px; border-right-width: 5px; border-bottom-width: 14px; }
-  #view-btn { bottom: 14px; right: 14px; left: auto; font-size: 13px; padding: 7px 12px; }
-  #mute-btn { bottom: 58px; right: 14px; left: auto; }
+  /* 오른손 엄지가 닿는 자리 — 탭하기 넉넉한 크기로 */
+  #view-btn { bottom: calc(12px + var(--sab)); right: calc(12px + var(--sar)); left: auto; font-size: 13.5px; padding: 11px 16px; }
+  #mute-btn { bottom: calc(64px + var(--sab)); right: calc(12px + var(--sar)); left: auto; width: 44px; padding: 10px 0; }
+  #satchel { bottom: calc(66px + var(--sab)); }
+  #sheep-chip { bottom: calc(66px + var(--sab)); left: calc(10px + var(--sal)); }
+  #toast { top: calc(104px + var(--sat)); font-size: 14px; padding: 8px 16px; max-width: 78vw; }
+  .verse { padding: 10px 14px; }
+  .discuss summary { padding: 12px 14px; }
+  .discuss #card-question { padding: 0 14px 14px; }
+}
+
+/* 터치 기기 공통 — 화면 폭과 무관하게 손가락 기준으로 키운다 */
+@media (pointer: coarse) {
+  #card-close, #epilogue-close, #dialog-actions button, #start-btn { min-height: 46px; }
+  #key-list li { padding: 5px 0; }
+  /* 툴팁 전용 칩이 왼손 엄지(조이스틱 영역)를 가로막지 않게 한다 */
+  #sheep-chip { pointer-events: none; }
+  #compass { pointer-events: none; }
+}
+
+/* 폰 가로 모드 — 세로 공간을 아껴 쓴다 */
+@media (max-height: 500px) {
+  #hud-title { display: none; }
+  #hud-top { top: calc(4px + var(--sat)); }
+  #chart-key { top: calc(44px + var(--sat)); right: calc(10px + var(--sar)); }
+  #compass { bottom: auto; top: calc(44px + var(--sat)); left: calc(10px + var(--sal)); right: auto; width: 46px; height: 46px; }
+  #compass-arrow::before { top: 7px; border-left-width: 5px; border-right-width: 5px; border-bottom-width: 14px; }
+  #key-list { max-height: 40vh; max-height: 40dvh; }
+  .card-inner { max-height: 94vh; max-height: 94dvh; padding: 16px 22px 18px; }
+  .card-seal { width: 36px; height: 36px; font-size: 17px; margin-bottom: 8px; }
+  #card-close, #epilogue-close { margin-top: 14px; }
+  .intro-inner { padding: 14px 20px; }
+  .rule-top { margin-bottom: 14px; }
+  .rule-bottom { margin-top: 14px; }
+  .intro-inner blockquote, .intro-text, .controls-hint { margin-top: 12px; }
+  #start-btn { margin-top: 16px; }
+  #satchel { bottom: calc(60px + var(--sab)); }
+  #sheep-chip { bottom: calc(60px + var(--sab)); }
+  /* 가로 모드: 범례(오른쪽 위)와 겹치지 않게 좁고 낮게 */
+  #toast { top: calc(52px + var(--sat)); max-width: 52vw; font-size: 14px; }
+  #chart-key { width: 200px; font-size: 13px; }
+}
+
+/* 터치 기기 가로 모드 — 버튼을 오른손 엄지 쪽으로 모은다 (왼쪽은 조이스틱 영역) */
+@media (max-height: 500px) and (pointer: coarse) {
+  #view-btn { bottom: calc(12px + var(--sab)); right: calc(12px + var(--sar)); left: auto; font-size: 13.5px; padding: 11px 16px; }
+  #mute-btn { bottom: calc(64px + var(--sab)); right: calc(12px + var(--sar)); left: auto; width: 44px; padding: 10px 0; }
+  #sheep-chip { left: calc(10px + var(--sal)); }
+}
+
+/* 아주 작은 폰 */
+@media (max-width: 400px) {
+  #chart-key { width: 170px; }
+  .card-inner { padding: 22px 14px 20px; }
+  .relic-slot { width: 22px; height: 22px; font-size: 12.5px; }
+  #satchel { gap: 3px; padding: 4px 7px; max-width: 96vw; }
+  .controls-hint { font-size: 13px; gap: 5px 16px; }
+  #hud-title { font-size: 13px; }
 }
