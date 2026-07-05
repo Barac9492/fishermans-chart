@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>어부의 지도 — 인도자용 나눔 가이드</title>
   <meta name="description" content="어부의 지도 열네 장소의 핵심 구절과 나눔 질문 — 인도자(교사)용 인쇄 가이드." />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐟</text></svg>" />
@@ -26,7 +26,7 @@
     main {
       max-width: 720px;
       margin: 0 auto;
-      padding: 48px 22px 64px;
+      padding: 48px max(22px, env(safe-area-inset-right)) calc(64px + env(safe-area-inset-bottom)) max(22px, env(safe-area-inset-left));
     }
     header { text-align: center; margin-bottom: 40px; }
     .rule { border-top: 2px solid var(--ink); border-bottom: 1px solid var(--ink); height: 5px; margin: 0 auto 22px; max-width: 340px; }
