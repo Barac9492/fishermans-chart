@@ -1,5 +1,17 @@
 # 어부의 지도 — 페이즈 체크포인트 로그
 
+## Phase: goty3-feel (2026-07-05) — ✅ 완료
+- 목표(GOTY 스택 3/3, "PlayStation-grade 손맛"): 이동 관성(ACCEL 26/DECEL 18,
+  벽·게이트 시 vel 리셋) · 달리기 FOV 킥(+7, 항해 +3) · 몸 기울임 ·
+  카메라 뱅크(±2°, 매 프레임 fresh lookAt 뒤 적용 — 누적 없음) ·
+  swingLerp+대기 호흡 · 걷기 먼지(속도 게이트).
+- 파이프라인: plan(Fable·high) → implementer(fable·medium, 105k, 이탈 2건 경미)
+  → reviewer(sonnet·fresh, 69k, **SHIP** + MINOR 2)
+- MINOR 2건 오케스트레이터 수정: 물 위 걷기 중 먼지 억제(!waterWalk),
+  시작 시 prevCamYaw 동기화(첫 프레임 가짜 뱅크 방지).
+- 오케스트레이터 검증: 시작→3s 질주→활강 정지 시뮬레이션, 콘솔 오류 0.
+- 산출물: tasks/{plan-goty3-feel,progress-goty3,review-goty3}.md
+
 ## Phase: goty2-title-end (2026-07-05) — ✅ 완료
 - 목표(GOTY 스택 2/3): 게임의 액자 — 살아있는 타이틀(반투명 스크림 + 갈릴리
   새벽 궤도 카메라 + 순차 페이드인) · 일시정지(Esc/⚙: 소리·화질 3단·2단계

@@ -1787,6 +1787,7 @@ document.getElementById('start-btn').addEventListener('click', () => {
   state.started = true;
   // 타이틀에서 물가를 돌던 시선을 그대로 이어받아 화면이 홱 돌지 않게 한다
   cam.yaw = Math.atan2(camera.position.x - player.position.x, camera.position.z - player.position.z);
+  prevCamYaw = cam.yaw; // 뱅크 계산이 첫 프레임에 가짜 회전을 보지 않도록
   audio.init();
   audio.setMuted(save.muted);
   // 출항의 부름: 주제가 처음으로 지나간다 (컨텍스트가 깨어날 짧은 틈을 두고)
@@ -3808,6 +3809,13 @@ function updateFinale(dt) {
 /* ---------------- movement & loop ---------------- */
 
 const SPEED = 7.5;
+const ACCEL = 26, DECEL = 18; // m/s² — 시작은 민첩하게, 멈춤은 반 발짝 미끄러지듯
+const FEEL = { fovKick: 7, bankMax: 0.035 }; // 달리기 화각 킥(°) · 카메라 뱅크 상한(rad) — 0이면 끔
+let velX = 0, velZ = 0;   // 이동 관성: 입력은 목표일 뿐, 실제 속도는 이 벡터
+let playerLean = 0;       // 달릴 때 몸의 앞기울임
+let swingLerp = 0;        // 팔다리 스윙 세기 (스냅 없이 배어들게)
+let bankLerp = 0;         // 카메라 뱅크 현재값
+let prevCamYaw = 0;
 let needleAngle = 0;
 let walkPhase = 0;
 let lastStepSign = true;
@@ -3876,6 +3884,13 @@ function angleLerp(a, b, t) {
   return a + d * t;
 }
 
+function angleDelta(a, b) { // a → b 최단각 차
+  let d = (b - a) % (Math.PI * 2);
+  if (d > Math.PI) d -= Math.PI * 2;
+  if (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
 // 주제곡의 모드: 지역의 빛(duskW)과 서사의 진행이 음악의 색을 정한다.
 // 부인(첫 불)과 회복(두 번째 불) 사이는 거의 침묵 — 슬픔은 부재로 말한다.
 function musicMode() {
@@ -3920,36 +3935,53 @@ function animate() {
     running = moving > 0.01 && (keys.ShiftLeft || keys.ShiftRight
       || (joy.id !== null && joy.mag > 64));
     const spd = SPEED * (running ? 1.8 : 1);
+    // 이동 관성: 목표 속도를 향해 프레임당 가속/감속 한도만큼만 따라간다
+    let tx = 0, tz = 0;
     if (moving > 0.01) {
       dirX = rightX * mx + fwdX * -mz;
       dirZ = rightZ * mx + fwdZ * -mz;
-      let nx = player.position.x + dirX * spd * dt;
-      let nz = player.position.z + dirZ * spd * dt;
-      if (!isWalkable(nx, player.position.z)) nx = player.position.x;
-      if (!isWalkable(nx, nz)) nz = player.position.z;
+      tx = dirX * spd;
+      tz = dirZ * spd;
+    }
+    const rate = (moving > 0.01 ? ACCEL : DECEL) * dt;
+    velX += Math.max(-rate, Math.min(rate, tx - velX));
+    velZ += Math.max(-rate, Math.min(rate, tz - velZ));
+    if (velX !== 0 || velZ !== 0) {
+      let nx = player.position.x + velX * dt;
+      let nz = player.position.z + velZ * dt;
+      if (!isWalkable(nx, player.position.z)) { nx = player.position.x; velX = 0; } // 벽에 대고 미는 관성 잔류 방지
+      if (!isWalkable(nx, nz)) { nz = player.position.z; velZ = 0; }
       [nx, nz] = collide(nx, nz);
       [nx, nz] = keepAwayFromCross(nx, nz);
       if (isWalkable(nx, nz)) player.position.set(nx, player.position.y, nz);
-      player.rotation.y = angleLerp(player.rotation.y, Math.atan2(dirX, dirZ), 0.2);
     }
+    if (moving > 0.01) player.rotation.y = angleLerp(player.rotation.y, Math.atan2(dirX, dirZ), 0.2);
+  } else {
+    velX = 0; velZ = 0; // 컷신·카드·크레딧에서 돌아온 직후 미끄러지지 않게
   }
-  walkPhase += dt * (4 + moving * 9) * (running ? 1.5 : 1);
-  const swing = moving > 0.01 ? 0.62 : 0;
+  const speedNow = Math.hypot(velX, velZ); // 애니메이션은 입력이 아니라 실제 속도를 따른다
+  walkPhase += dt * (4 + (speedNow / SPEED) * 9) * (running ? 1.5 : 1);
+  swingLerp += ((speedNow > 0.4 ? 0.62 : 0) - swingLerp) * Math.min(1, dt * 8);
   if (sitting) { // 앉은 자세: 다리는 앞으로 접고 팔은 무릎 위에
     legL.rotation.x = legR.rotation.x = 1.4;
     armL.rotation.x = armR.rotation.x = 0.55;
   } else {
-    legL.rotation.x = Math.sin(walkPhase) * swing;
-    legR.rotation.x = -Math.sin(walkPhase) * swing;
-    armL.rotation.x = -Math.sin(walkPhase) * swing * 0.8;
-    armR.rotation.x = Math.sin(walkPhase) * swing * 0.8;
+    const breath = Math.sin(t * 1.6) * 0.02; // 대기 자세의 미세한 숨 — 다리는 흔들지 않는다
+    legL.rotation.x = Math.sin(walkPhase) * swingLerp;
+    legR.rotation.x = -Math.sin(walkPhase) * swingLerp;
+    armL.rotation.x = -Math.sin(walkPhase) * swingLerp * 0.8 + breath;
+    armR.rotation.x = Math.sin(walkPhase) * swingLerp * 0.8 + breath;
   }
-  // 달릴 때 발밑 흙먼지
-  if (running && moving > 0.01) {
+  // 달릴 때 몸이 진행 방향으로 살짝 숙는다 (player.rotation.x는 여기서만 만진다)
+  const leanGoal = sitting ? 0 : Math.min(0.16, speedNow * 0.012);
+  playerLean += (leanGoal - playerLean) * Math.min(1, dt * 6);
+  player.rotation.x = playerLean;
+  // 발밑 흙먼지: 달리면 자주, 걸어도 옅게 — 물 위를 걸을 때는 먼지가 없다
+  if (speedNow > 3 && !waterWalk) {
     dustTimer -= dt;
     if (dustTimer <= 0) {
-      dustTimer = 0.16;
-      dustAt(player.position.x - dirX * 0.5, player.position.z - dirZ * 0.5);
+      dustTimer = running ? 0.16 : 0.5;
+      dustAt(player.position.x - (velX / speedNow) * 0.5, player.position.z - (velZ / speedNow) * 0.5);
     }
   }
 
@@ -3968,12 +4000,12 @@ function animate() {
     // 각본된 침몰·구원 중에는 updateWaterWalk가 직접 깊이를 다룬다
     waterWalkSink += (0 - waterWalkSink) * Math.min(1, dt * 2);
   }
-  player.position.y = sitting ? -0.38 : (moving > 0.01 ? Math.abs(Math.sin(walkPhase)) * 0.1 : 0) - waterWalkSink;
+  player.position.y = sitting ? -0.38 : Math.abs(Math.sin(walkPhase)) * 0.1 * Math.min(1, speedNow / SPEED) - waterWalkSink;
   // 가라앉을수록 화면 가장자리가 어두워진다
   if (sinkVeil) sinkVeil.style.opacity = String(Math.min(0.72, waterWalkSink * 1.4));
 
   const stepSign = Math.sin(walkPhase) >= 0;
-  if (moving > 0.01 && stepSign !== lastStepSign) {
+  if (speedNow > 0.8 && stepSign !== lastStepSign) {
     audio.play(onHolyLand(player.position.x, player.position.z) || onRome(player.position.x, player.position.z) ? 'step' : 'stepWood');
   }
   lastStepSign = stepSign;
@@ -4037,6 +4069,18 @@ function animate() {
   camera.position.lerp(_camPos, camK);
   lookTarget.lerp(_lookGoal, camK);
   camera.lookAt(lookTarget);
+  // 달리기 FOV 킥 + 회전 뱅크: 자유 보행 카메라에서만 (타이틀 궤도·차트·피날레는 중립)
+  const freeCam = state.started && !finale && !chartView;
+  const fovGoal = freeCam ? 55 + (running && speedNow > SPEED ? FEEL.fovKick : 0) + (voyage ? 3 : 0) : 55;
+  if (Math.abs(camera.fov - fovGoal) > 0.05) {
+    camera.fov += (fovGoal - camera.fov) * Math.min(1, dt * 4);
+    camera.updateProjectionMatrix();
+  }
+  const yawRate = angleDelta(prevCamYaw, cam.yaw) / Math.max(dt, 0.001); // rad/s
+  prevCamYaw = cam.yaw;
+  const bankGoal = freeCam ? Math.max(-FEEL.bankMax, Math.min(FEEL.bankMax, -yawRate * 0.02)) : 0;
+  bankLerp += (bankGoal - bankLerp) * Math.min(1, dt * 5);
+  camera.rotateZ(bankLerp); // 지평선이 아주 살짝 기운다 — 2° 상한, 멀미 방지
   const fv = FOG_VIEWS[state.view];
   scene.fog.near += (fv.near - scene.fog.near) * Math.min(1, dt * 2);
   scene.fog.far += (fv.far - scene.fog.far) * Math.min(1, dt * 2);
