@@ -1,5 +1,11 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { SITES, EPILOGUE } from './sites.js';
 import { audio } from './audio.js';
 
@@ -143,6 +149,53 @@ function applyShadowFrustum(view) {
   c.updateProjectionMatrix();
 }
 applyShadowFrustum('street');
+
+/* ---------------- 포스트프로세싱: 블룸 + 필름 마감 ----------------
+   컴포저 버퍼는 톤매핑 전 리니어 HDR — 발광 재질만 색을 HDR로 부스트해
+   임계값(2.2)을 넘긴다. 모바일 등 저사양은 FPS 게이트로 조용히 해제. */
+const filmPass = new ShaderPass({
+  uniforms: { tDiffuse: { value: null }, uTime: { value: 0 } },
+  vertexShader: /* glsl */`
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }`,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tDiffuse;
+    uniform float uTime;
+    varying vec2 vUv;
+    float hash(vec2 p) {
+      return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+    }
+    void main() {
+      vec4 col = texture2D(tDiffuse, vUv);
+      float d = distance(vUv, vec2(0.5));
+      col.rgb *= 1.0 - smoothstep(0.55, 1.0, d) * 0.28;           // 비네트
+      col.rgb += (hash(vUv * (97.0 + mod(uTime, 61.0))) - 0.5) * 0.035; // 그레인
+      gl_FragColor = col;
+    }`,
+});
+const composer = new EffectComposer(renderer); // r160 기본 HalfFloat — HDR OK
+composer.addPass(new RenderPass(scene, camera));
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth / 2, window.innerHeight / 2),
+  0.55,  // strength — 은은하게
+  0.35,  // radius
+  2.2    // threshold — HDR 부스트된 발광체만 넘는다
+);
+composer.addPass(bloomPass);
+composer.addPass(new OutputPass()); // ACES 톤매핑 + sRGB
+composer.addPass(filmPass);         // 비네트+그레인은 sRGB 공간에서
+let usePost = true;
+const fpsGate = { time: 0, frames: 0, done: false }; // 시작 후 4초 측정, 한 번만
+
+// 물 환경반사: 실패해도 게임은 계속 간다
+try {
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  pmrem.dispose();
+} catch { /* 환경맵 없이 진행 */ }
 
 const colliders = []; // axis-aligned boxes {x0,x1,z0,z1}
 
@@ -340,7 +393,7 @@ waterGeo.rotateX(-Math.PI / 2);
 const waterBase = waterGeo.attributes.position.array.slice();
 const seaWater = new THREE.Mesh(
   waterGeo,
-  new THREE.MeshStandardMaterial({ color: COLORS.sea, roughness: 0.4, metalness: 0.05, flatShading: true })
+  new THREE.MeshStandardMaterial({ color: COLORS.sea, roughness: 0.3, metalness: 0.05, flatShading: true, envMapIntensity: 1.15 })
 );
 seaWater.position.set(-90, -0.6, -20);
 seaWater.receiveShadow = true;
@@ -351,7 +404,7 @@ lakeGeo.rotateX(-Math.PI / 2);
 const lakeBase = lakeGeo.attributes.position.array.slice();
 const lakeWater = new THREE.Mesh(
   lakeGeo,
-  new THREE.MeshStandardMaterial({ color: COLORS.lake, roughness: 0.35, metalness: 0.05, flatShading: true })
+  new THREE.MeshStandardMaterial({ color: COLORS.lake, roughness: 0.24, metalness: 0.05, flatShading: true, envMapIntensity: 1.15 })
 );
 lakeWater.position.set(0, -0.42, -129);
 lakeWater.receiveShadow = true;
@@ -731,10 +784,9 @@ function basaltHouse(x, z, w = 3, d = 3, h = 2.4, rotY = 0) {
   box(0.7, 1.3, 0.15, 0x1c1a18, 0, 0.65, d / 2 + 0.06, g, false); // 문
   box(0.9, 0.12, 0.2, 0xcabb98, 0, 1.38, d / 2 + 0.08, g, false); // 문 상인방(석회석)
   // 창: 따뜻한 불빛 한 점 — 마을에 사람이 산다
-  const win = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.42, 0.5),
-    new THREE.MeshBasicMaterial({ color: 0xe8c988 })
-  );
+  const winMat = new THREE.MeshBasicMaterial({ color: 0xe8c988 });
+  winMat.color.multiplyScalar(2); // HDR 부스트 — 블룸용 (생성 시 1회)
+  const win = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.5), winMat);
   win.position.set(w / 2 + 0.03, h * 0.55, (Math.random() - 0.5) * (d * 0.4));
   win.rotation.y = Math.PI / 2;
   g.add(win);
@@ -831,6 +883,7 @@ const lightPath = (() => {
   ctx.fillRect(0, 0, 256, 64);
   const tex = new THREE.CanvasTexture(cv);
   const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, opacity: 0 }));
+  m.material.color.multiplyScalar(2.5); // HDR 부스트 — 블룸용 (생성 시 1회)
   m.position.set((WW_DROP.x + WW_MARKER.x) / 2, 0.12, (WW_DROP.z + WW_MARKER.z) / 2);
   m.rotation.y = -Math.atan2(WW_MARKER.z - WW_DROP.z, WW_MARKER.x - WW_DROP.x);
   m.visible = false;
@@ -1090,6 +1143,7 @@ function fireProp(x, z) {
     new THREE.ConeGeometry(0.32, 0.7, 8),
     new THREE.MeshBasicMaterial({ color: 0xff8a3a, transparent: true, opacity: 0.85 })
   );
+  glow.material.color.multiplyScalar(3.5); // HDR 부스트 — 블룸용 (생성 시 1회)
   glow.position.y = 0.5;
   const light = new THREE.PointLight(0xff9040, 1.4, 9, 2);
   light.position.y = 0.6;
@@ -1150,6 +1204,7 @@ const lampFlame = new THREE.Mesh(
   new THREE.ConeGeometry(0.09, 0.18, 6),
   new THREE.MeshBasicMaterial({ color: 0xffc860 })
 );
+lampFlame.material.color.multiplyScalar(4); // HDR 부스트 — 블룸용 (생성 시 1회)
 {
   const body = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.2, 0.16), lambert(0x4a3a28));
   lampFlame.position.y = 0.19;
@@ -1161,6 +1216,7 @@ const lampFlame = new THREE.Mesh(
 const lampLight = new THREE.PointLight(0xf5c878, 0, 14, 2);
 lampLight.position.y = 2;
 player.add(lampLight);
+let lampLerp = 0;     // 목표 강도 lerp 상태 — 플리커는 이 결과에 곱해서만
 let lampSeen = false; // 첫 점등의 자막은 한 세션에 한 번
 
 camera.position.set(
@@ -1285,6 +1341,7 @@ const torches = [];
     [-20, 90], [20, 90], [0, 138], [-30, 138],
   ];
   const flameMat = new THREE.MeshBasicMaterial({ color: 0xff8a3a, transparent: true, opacity: 0.9, fog: false });
+  flameMat.color.multiplyScalar(3.5); // HDR 부스트 — 블룸용 (clone들이 색을 물려받는다)
   for (const [x, z] of spots) {
     const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 1.2, 5), lambert(0x2a2018));
     post.position.set(x, 7.6, z);
@@ -1363,15 +1420,39 @@ function radialSprite(stops, size = 256) {
   return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: false, opacity: 0 }));
 }
 const sunSprite = radialSprite([[0, 'rgba(255,248,224,1)'], [0.14, 'rgba(255,242,205,0.9)'], [0.4, 'rgba(250,232,185,0.3)'], [1, 'rgba(250,232,185,0)']]);
+sunSprite.material.color.multiplyScalar(1.6); // HDR 부스트 — 면적이 커서 은은하게
 sunSprite.scale.setScalar(120);
 sunSprite.renderOrder = -10;
 scene.add(sunSprite);
 const moonSprite = radialSprite([[0, 'rgba(235,240,250,1)'], [0.1, 'rgba(225,232,246,0.95)'], [0.16, 'rgba(215,224,242,0.25)'], [1, 'rgba(215,224,242,0)']]);
+moonSprite.material.color.multiplyScalar(1.6); // HDR 부스트 — 면적이 커서 은은하게
 moonSprite.scale.setScalar(60);
 moonSprite.renderOrder = -10;
 scene.add(moonSprite);
 const SUN_DIR = new THREE.Vector3(0.55, 0.5, 0.42).normalize();
 const MOON_DIR = new THREE.Vector3(-0.4, 0.55, -0.5).normalize();
+
+// 햇빛 반짝임 길: 호수 수면 위, 해 쪽으로 길게 눕는 additive 띠 — 낮에만
+const sunGlint = (() => {
+  const geo = new THREE.PlaneGeometry(34, 5);
+  geo.rotateX(-Math.PI / 2);
+  const [cv, c] = canvas2d(128, 128);
+  const g = c.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, 'rgba(255,244,206,0.9)');
+  g.addColorStop(0.5, 'rgba(255,238,190,0.35)');
+  g.addColorStop(1, 'rgba(255,238,190,0)');
+  c.fillStyle = g;
+  c.fillRect(0, 0, 128, 128);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+    map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false, opacity: 0,
+  }));
+  m.position.set(0, 0.1, -129); // 호수 한가운데
+  m.rotation.y = -Math.atan2(SUN_DIR.z, SUN_DIR.x); // 해의 방위각 방향으로
+  scene.add(m);
+  return m;
+})();
 
 // 별밭: 위쪽 반구에 뿌린 점들 — 밤에만 배어 나온다
 const stars = (() => {
@@ -1390,6 +1471,7 @@ const stars = (() => {
   const p = new THREE.Points(geo, new THREE.PointsMaterial({
     color: 0xe8ecf5, size: 1.7, sizeAttenuation: false, transparent: true, opacity: 0, fog: false, depthWrite: false,
   }));
+  p.material.color.multiplyScalar(2.5); // HDR 부스트 — 블룸용 (생성 시 1회)
   p.renderOrder = -11;
   scene.add(p);
   return p;
@@ -1458,6 +1540,7 @@ function lerp3(out, a, b, c, t) {
 }
 function applyWarmth(w) {
   duskW = w;
+  renderer.toneMappingExposure = 1.0 + 0.12 * w; // 밤은 차분하게, 낮은 환하게
   if (Math.abs(w - lastSkyW) > 0.015) { setSky(w); lastSkyW = w; }
   lerp3(scene.fog.color, FOG_NIGHT, FOG_DAY, FOG_DUSK, w);
   lerp3(sun.color, SUN_NIGHT, SUN_DAY, SUN_DUSK, w);
@@ -1675,6 +1758,8 @@ if (save.charted.length > 0) {
 const IS_TOUCH = window.matchMedia('(pointer: coarse)').matches
   || navigator.maxTouchPoints > 0
   || 'ontouchstart' in window;
+// 데스크톱은 그림자를 더 곱게 (첫 렌더 전이라 재할당 비용 없음)
+if (!IS_TOUCH) sun.shadow.mapSize.set(4096, 4096);
 
 let touchHintHide = null;
 function showTouchHint() {
@@ -2193,11 +2278,13 @@ function updateTombRace(dt, distTomb) {
 function makeLightFigure() {
   const g = new THREE.Group();
   const mat = new THREE.MeshBasicMaterial({ color: 0xfff3d8, transparent: true, opacity: 0.92, fog: false });
+  mat.color.multiplyScalar(4.5); // HDR 부스트 — 블룸용 (생성 시 1회)
   const robe = new THREE.Mesh(new THREE.ConeGeometry(0.5, 2.1, 10), mat);
   robe.position.y = 1.05;
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), mat);
   head.position.y = 2.32;
   const glow = radialSprite([[0, 'rgba(255,244,214,0.7)'], [0.4, 'rgba(255,240,200,0.22)'], [1, 'rgba(255,240,200,0)']]);
+  glow.material.color.multiplyScalar(3.5); // HDR 부스트 — 블룸용 (생성 시 1회)
   glow.material.opacity = 0.75;
   glow.scale.setScalar(6.5);
   glow.position.y = 1.4;
@@ -2215,6 +2302,7 @@ const rescueBeam = new THREE.Mesh(
   new THREE.CylinderGeometry(0.06, 0.06, 1, 6),
   new THREE.MeshBasicMaterial({ color: 0xfff0c0, transparent: true, opacity: 0.85, fog: false })
 );
+rescueBeam.material.color.multiplyScalar(3.5); // HDR 부스트 — 블룸용 (생성 시 1회)
 rescueBeam.visible = false;
 scene.add(rescueBeam);
 const _beamDir = new THREE.Vector3();
@@ -3075,6 +3163,7 @@ const sparkTex = (() => {
 function goldBurst(x, z, y = 3) {
   for (let i = 0; i < 12; i++) {
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: sparkTex, transparent: true, depthWrite: false, opacity: 0.95 }));
+    sp.material.color.multiplyScalar(3); // HDR 부스트 — 블룸용 (생성 시 1회)
     sp.scale.setScalar(0.5 + Math.random() * 0.5);
     sp.position.set(x, y, z);
     scene.add(sp);
@@ -3138,6 +3227,7 @@ function spawnShootingStar() {
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({
     map: sparkTex, color: 0xeef2ff, transparent: true, depthWrite: false, opacity: 0.95,
   }));
+  sp.material.color.multiplyScalar(4); // HDR 부스트 — 블룸용 (생성 시 1회)
   sp.scale.set(7, 0.5, 1); // 가로로 길게 — 흐르는 획
   sp.position.set(
     player.position.x + rnd(-60, 60),
@@ -3290,6 +3380,7 @@ function flameFallAt(x, z) {
     new THREE.ConeGeometry(0.22, 0.65, 7),
     new THREE.MeshBasicMaterial({ color: 0xff9a3a, transparent: true, opacity: 0.95, fog: false })
   );
+  m.material.color.multiplyScalar(3.5); // HDR 부스트 — 블룸용 (생성 시 1회)
   m.position.set(x, 9, z);
   scene.add(m);
   flameFalls.push({ m, t: 0, x, z });
@@ -3626,6 +3717,16 @@ function animate() {
   const dt = Math.min(clock.getDelta(), 0.05);
   const t = clock.elapsedTime;
 
+  // FPS 게이트: 시작 후 4초간 평균 FPS < 45면 포스트프로세싱을 조용히 끈다 (1회)
+  if (usePost && !fpsGate.done && state.started) {
+    fpsGate.time += dt;
+    fpsGate.frames++;
+    if (fpsGate.time >= 4) {
+      fpsGate.done = true;
+      if (fpsGate.frames / fpsGate.time < 45) usePost = false;
+    }
+  }
+
   const effYaw = state.view === 'chart' ? 0 : cam.yaw;
   const fwdX = -Math.sin(effYaw), fwdZ = -Math.cos(effYaw);
   const rightX = Math.cos(effYaw), rightZ = -Math.sin(effYaw);
@@ -3773,12 +3874,16 @@ function animate() {
     if (cl.sp.position.x > 320) cl.sp.position.x = -320;
     cl.sp.material.opacity += ((chartUp ? 0 : cl.peak * (0.35 + 0.65 * dayK)) - cl.sp.material.opacity) * Math.min(1, dt * 2);
   }
+  // 호수의 햇빛 반짝임 길: 낮에만, 은은하게 숨쉰다
+  sunGlint.material.opacity = chartUp ? 0 : 0.22 * dayK * (0.8 + 0.2 * Math.sin(t * 1.7));
+  sunGlint.visible = sunGlint.material.opacity > 0.01;
 
   // 발의 등불: 예루살렘의 밤길(z > 60)에서만 — 갈릴리의 긴 밤과 로마는 켜지 않는다
   const lampTarget = (duskW < 0.35 && player.position.z > 60
     && onHolyLand(player.position.x, player.position.z)) ? 1.4 : 0;
-  lampLight.intensity += (lampTarget - lampLight.intensity) * Math.min(1, dt * 2);
-  lampG.visible = lampLight.intensity > 0.05;
+  lampLerp += (lampTarget - lampLerp) * Math.min(1, dt * 2);
+  lampLight.intensity = lampLerp * (0.86 + 0.14 * Math.sin(t * 9.3) * Math.sin(t * 23.7));
+  lampG.visible = lampLerp > 0.05;
   if (lampG.visible) { // 불꽃 일렁임
     const fk = 1 + Math.sin(t * 11) * 0.18;
     lampFlame.scale.set(fk, 0.9 + Math.sin(t * 11) * 0.2, fk);
@@ -3943,10 +4048,12 @@ function animate() {
   }
 
   // fires: flicker, and light the two moments that rhyme
-  for (const f of fires) {
+  for (let i = 0; i < fires.length; i++) {
+    const f = fires[i];
     const k = 0.85 + Math.sin(t * 14 + f.g.position.x) * 0.15;
     f.glow.scale.set(k, 1, k);
-    f.light.intensity = 1.1 + Math.sin(t * 11) * 0.3;
+    f.light.intensity = (1.1 + Math.sin(t * 11) * 0.3)
+      * (0.86 + 0.14 * Math.sin(t * 9.3 + i) * Math.sin(t * 23.7 + i * 2));
   }
 
   // water: a lake ripple and a heavier sea swell
@@ -4122,13 +4229,20 @@ function animate() {
     ducked: (state.modal && !finale && !voyage),
   });
 
-  renderer.render(scene, camera);
+  if (usePost) {
+    filmPass.uniforms.uTime.value = t;
+    composer.render();
+  } else {
+    renderer.render(scene, camera);
+  }
 }
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+  bloomPass.resolution.set(window.innerWidth / 2, window.innerHeight / 2);
 });
 
 for (const id of save.charted) {

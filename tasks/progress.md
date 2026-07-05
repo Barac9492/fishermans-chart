@@ -1,5 +1,14 @@
 # 어부의 지도 — 페이즈 체크포인트 로그
 
+## Phase: adoption-pack (2026-07-04) — ✅ 완료·배포
+- 내용: 무음 양 신호("매애…" 말풍선) · 목자 지역 힌트 · guide.html 인도자 가이드
+- 파이프라인: plan(Fable·high, scout 생략 — 판단 조항) →
+  implementer(fable·medium, 90k tk) → reviewer(sonnet·fresh, 44k tk, **SHIP**, findings 0)
+- 오케스트레이터 검증: 매애 버블 opacity 0.9 페이드인, 수집 후 목자 상태
+  'hint:갈릴리 물가', guide.html 200 + sites.js import, 콘솔 오류 0
+- 커밋: 7d633fd · 프로덕션 반영 확인 (guide.html 200 라이브)
+- 산출물: tasks/{plan,progress,review}-adoption.md
+
 ## Phase: sabbath-pack (2026-07-04) — ✅ 완료·배포
 - 내용: 앉기(쉼, 시 46:10) · 발의 등불(시 119:105) · 들의 백합(마 6:28-30)
 - 파이프라인: scout(haiku·low, 104k tk) → plan(Fable·high) →
