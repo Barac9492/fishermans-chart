@@ -1781,6 +1781,8 @@ document.getElementById('start-btn').addEventListener('click', () => {
   state.started = true;
   audio.init();
   audio.setMuted(save.muted);
+  // 출항의 부름: 주제가 처음으로 지나간다 (컨텍스트가 깨어날 짧은 틈을 두고)
+  setTimeout(() => audio.play('themeCall'), 150);
   if (window.innerWidth < 700) document.getElementById('chart-key').removeAttribute('open');
   toast(save.charted.length > 0
     ? '다시 바닷가예요. 이미 찾은 곳은 지도가 기억하고 있어요.'
@@ -3712,6 +3714,21 @@ function angleLerp(a, b, t) {
   return a + d * t;
 }
 
+// 주제곡의 모드: 지역의 빛(duskW)과 서사의 진행이 음악의 색을 정한다.
+// 부인(첫 불)과 회복(두 번째 불) 사이는 거의 침묵 — 슬픔은 부재로 말한다.
+function musicMode() {
+  if (!state.started) return 'off';
+  if (eclipse || sleepFx || sitting) return 'silent'; // 연출이 말할 때 음악은 물러선다
+  if (finale) return 'finale';
+  const denied = markerById['first-fire'].visited;
+  const restored = markerById['second-fire'].visited;
+  if (denied && !restored) return 'lament';
+  if (restored && duskW > 0.45) return 'dawn'; // 주제가 한 옥타브 위에서 돌아온다
+  if (duskW > 0.6) return 'galilee';
+  if (duskW < 0.3) return 'jerusalem';
+  return 'road';
+}
+
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
@@ -4227,6 +4244,7 @@ function animate() {
     fireDist,
     warmth: duskW,
     ducked: (state.modal && !finale && !voyage),
+    music: musicMode(),
   });
 
   if (usePost) {
