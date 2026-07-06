@@ -1814,6 +1814,8 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyM' && state.started) toggleView();
 });
 window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+// 창을 떠나면(Alt-Tab, 다른 앱) keyup을 놓친다 — 돌아왔을 때 혼자 걷지 않도록 비운다
+window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
 const joy = { id: null, ox: 0, oy: 0, dx: 0, dy: 0, mag: 0 };
 const look = { id: null, lx: 0, ly: 0, sx: 0, sy: 0 };
@@ -2075,6 +2077,11 @@ function togglePause() {
   if (!paused && !canPause()) return;
   paused = !paused;
   pauseEl.classList.toggle('hidden', !paused);
+  // 쉼표를 찍거나 걷어낼 때 키 상태를 비운다 — 쉬는 동안 쌓인 유령 키가
+  // 재개 직후의 걸음을 훔치지 못하게. (꾹 누른 키는 자동 반복이 곧 되살린다)
+  for (const k in keys) keys[k] = false;
+  // 메뉴 버튼에 남은 포커스도 걷는다 — Space/Enter가 버튼을 다시 누르지 않게
+  if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
   if (paused) {
     restartArmedAt = 0;
     pauseRestartBtn.textContent = '처음부터 다시';
@@ -4045,6 +4052,7 @@ function updateFinale(dt) {
 const SPEED = 7.5;
 const ACCEL = 26, DECEL = 18; // m/s² — 시작은 민첩하게, 멈춤은 반 발짝 미끄러지듯
 const FEEL = { fovKick: 7, bankMax: 0.035 }; // 달리기 화각 킥(°) · 카메라 뱅크 상한(rad) — 0이면 끔
+let runTipTime = 0, runTipDone = false; // 달리기를 모른 채 걷기만 6초면 한 번 귀띔한다
 let velX = 0, velZ = 0;   // 이동 관성: 입력은 목표일 뿐, 실제 속도는 이 벡터
 let playerLean = 0;       // 달릴 때 몸의 앞기울임
 let swingLerp = 0;        // 팔다리 스윙 세기 (스냅 없이 배어들게)
@@ -4168,6 +4176,17 @@ function animate() {
     // 링 가장자리(42px)에 대면 걷기 — 안 그러면 모바일이 상시 질주가 된다.
     running = moving > 0.01 && (keys.ShiftLeft || keys.ShiftRight
       || (joy.id !== null && joy.mag > 64));
+    // 달리기를 아직 모르는 걸음에게 한 번만 귀띔 — 걷기만 6초 지나면
+    if (!runTipDone) {
+      if (running) runTipDone = true;
+      else if (moving > 0.01 && joy.id === null) {
+        runTipTime += dt;
+        if (runTipTime > 6) {
+          runTipDone = true;
+          toast('갈 길이 멀 때는 Shift를 누른 채 걸으라 — 달음질이 된다.', 5000);
+        }
+      }
+    }
     const spd = SPEED * (running ? 1.8 : 1);
     // 이동 관성: 목표 속도를 향해 프레임당 가속/감속 한도만큼만 따라간다
     let tx = 0, tz = 0;
@@ -4738,5 +4757,17 @@ for (const i of save.sheep) {
 if (save.sheep.length >= 12) spawnPetLamb(true); // 목자의 상은 세션을 건너 이어진다
 updateSheepChip();
 updateNextHint();
+
+// QA 훅: 자동화 테스트가 위치·상태를 읽을 수 있게 한다 (게임 로직은 손대지 않는다)
+window.__qa = {
+  get pos() { return { x: player.position.x, z: player.position.z }; },
+  get flags() {
+    return {
+      started: state.started, modal: !!state.modal, paused, view: state.view,
+      voyage: !!voyage, finale: !!finale, sitting: !!sitting, credits: !!credits,
+    };
+  },
+  get keys() { return keys; },
+};
 
 animate();
