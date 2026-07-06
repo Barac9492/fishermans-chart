@@ -39,6 +39,7 @@ const COLORS = {
   woodDark: 0x5a4128,
   robe: 0x8a7050,
   cloak: 0x5b6e6a,
+  mantle: 0x6b7e78,
   cross: 0x2a2420,
 };
 
@@ -393,7 +394,7 @@ waterGeo.rotateX(-Math.PI / 2);
 const waterBase = waterGeo.attributes.position.array.slice();
 const seaWater = new THREE.Mesh(
   waterGeo,
-  new THREE.MeshStandardMaterial({ color: COLORS.sea, roughness: 0.3, metalness: 0.05, flatShading: true, envMapIntensity: 1.15 })
+  new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.3, metalness: 0.05, flatShading: true, envMapIntensity: 1.15 })
 );
 seaWater.position.set(-90, -0.6, -20);
 seaWater.receiveShadow = true;
@@ -404,11 +405,42 @@ lakeGeo.rotateX(-Math.PI / 2);
 const lakeBase = lakeGeo.attributes.position.array.slice();
 const lakeWater = new THREE.Mesh(
   lakeGeo,
-  new THREE.MeshStandardMaterial({ color: COLORS.lake, roughness: 0.24, metalness: 0.05, flatShading: true, envMapIntensity: 1.15 })
+  new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.24, metalness: 0.05, flatShading: true, envMapIntensity: 1.15 })
 );
 lakeWater.position.set(0, -0.42, -129);
 lakeWater.receiveShadow = true;
 scene.add(lakeWater);
+
+// 물가의 깊이: 해안선까지의 거리로 정점색을 굽는다 — 물가 0~6유닛은 얕게 밝아진다.
+// 재질 color는 흰색으로 두고 원래 물색을 정점에 굽는다 (이중 곱 방지). 빌드 타임 1회.
+function distToPoly(px, pz, poly) {
+  let best = Infinity;
+  for (let i = 0; i < poly.length; i++) {
+    const [ax, az] = poly[i], [bx, bz] = poly[(i + 1) % poly.length];
+    const dx = bx - ax, dz = bz - az;
+    const len2 = dx * dx + dz * dz;
+    if (len2 < 1e-9) continue; // 닫는 점이 중복된 다각형(MAIN_LAND)의 0길이 선분
+    const tt = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / len2));
+    best = Math.min(best, Math.hypot(px - ax - dx * tt, pz - az - dz * tt));
+  }
+  return best;
+}
+function bakeShoreColors(geo, baseHex, offX, offZ, polys) {
+  const pos = geo.attributes.position;
+  const col = new Float32Array(pos.count * 3);
+  const base = new THREE.Color(baseHex);
+  for (let i = 0; i < pos.count; i++) {
+    let d = Infinity;
+    for (const p of polys) d = Math.min(d, distToPoly(pos.array[i * 3] + offX, pos.array[i * 3 + 2] + offZ, p));
+    const k = 1 + 0.2 * Math.max(0, 1 - d / 6); // 물가로 갈수록 +20%까지 밝게
+    col[i * 3] = base.r * k;
+    col[i * 3 + 1] = base.g * k;
+    col[i * 3 + 2] = base.b * k;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+}
+bakeShoreColors(lakeGeo, COLORS.lake, 0, -129, [LAKE]);
+bakeShoreColors(waterGeo, COLORS.sea, -90, -20, [MAIN_LAND]);
 
 // 흙바닥 질감: 모래 알갱이와 옅은 얼룩 — 단색 평면이던 땅에 살결을 준다
 function makeGroundTexture(base) {
@@ -459,8 +491,109 @@ romeTex.repeat.set(1 / 24, 1 / 24);
 extrudeLand(MAIN_LAND, COLORS.land, COLORS.landSide, { hole: LAKE, topMap: sandTex });
 extrudeLand(ROME_LAND, COLORS.romeLand, COLORS.romeLandSide, { topMap: romeTex });
 
-// 물가 거품 띠: 호수 가장자리를 따라 밝은 리본 — 뭍과 물의 경계가 살아난다
+/* ---------------- 지역 색 스크립팅 ----------------
+   걷는 땅은 평평한 채로, 색만 지역을 따라 흐르게 하는 반투명 워시 한 장.
+   갈릴리의 초록기 도는 물가, 요단 길의 붉은 황토, 예루살렘의 차가운 석회암. */
+function makeRegionTint() {
+  const W = 256, H = 768;
+  const [cv, ctx] = canvas2d(W, H);
+  const X = (x) => (x + 58) / 116 * W;   // 월드 x -58→0, 58→256
+  const Y = (z) => (z + 205) / 368 * H;  // 월드 z -205(북)→0, 163(남)→768
+
+  // 요단 길: 중앙 스파인(x±6)의 붉은 황토 띠 — 가장자리로 소멸 (먼저 깔고 위에 워시를 얹는다)
+  let g = ctx.createLinearGradient(X(-14), 0, X(14), 0);
+  g.addColorStop(0, 'rgba(152,82,44,0)');
+  g.addColorStop(0.5, 'rgba(152,82,44,0.15)');
+  g.addColorStop(1, 'rgba(152,82,44,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(X(-14), Y(-95), X(14) - X(-14), Y(88) - Y(-95));
+  // 띠의 남북 끝을 부드럽게 지운다
+  ctx.globalCompositeOperation = 'destination-out';
+  g = ctx.createLinearGradient(0, Y(-95), 0, Y(-75));
+  g.addColorStop(0, 'rgba(0,0,0,1)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(X(-14), Y(-95), X(14) - X(-14), Y(-75) - Y(-95));
+  g = ctx.createLinearGradient(0, Y(68), 0, Y(88));
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(1, 'rgba(0,0,0,1)');
+  ctx.fillStyle = g;
+  ctx.fillRect(X(-14), Y(68), X(14) - X(-14), Y(88) - Y(68));
+  ctx.globalCompositeOperation = 'source-over';
+
+  // 갈릴리(z<-95): 따뜻한 모래 워시, 남쪽으로 스러진다
+  g = ctx.createLinearGradient(0, 0, 0, Y(-80));
+  g.addColorStop(0, 'rgba(214,186,128,0.16)');
+  g.addColorStop(0.75, 'rgba(214,186,128,0.12)');
+  g.addColorStop(1, 'rgba(214,186,128,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, Y(-80));
+
+  // 호숫가 ~8유닛: 초록기 도는 모래 — 물이 기른 풀빛
+  ctx.beginPath();
+  LAKE.forEach(([x, z], i) => (i ? ctx.lineTo(X(x), Y(z)) : ctx.moveTo(X(x), Y(z))));
+  ctx.closePath();
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(150,160,110,0.09)';
+  ctx.lineWidth = 66; // 바깥쪽 부드러운 번짐
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(150,160,110,0.14)';
+  ctx.lineWidth = 34; // ~8유닛 폭의 본 띠
+  ctx.stroke();
+
+  // 새벽 바닷가: 두 번째 불 언저리의 장밋빛 금 (요 21)
+  g = ctx.createRadialGradient(X(27), Y(-141), 0, X(27), Y(-141), 40);
+  g.addColorStop(0, 'rgba(232,176,118,0.16)');
+  g.addColorStop(1, 'rgba(232,176,118,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(X(27) - 40, Y(-141) - 40, 80, 80);
+
+  // 예루살렘(z>88): 차가운 석회암 워시
+  g = ctx.createLinearGradient(0, Y(70), 0, Y(112));
+  g.addColorStop(0, 'rgba(190,195,205,0)');
+  g.addColorStop(1, 'rgba(190,195,205,0.16)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, Y(70), W, H - Y(70));
+
+  // 큰 스케일의 명암 얼룩 — 단조로움을 깬다
+  const blotches = [
+    [-30, -66, 100, '255,244,214', 0.05], [22, -22, 116, '96,78,50', 0.05],
+    [-18, 42, 96, '96,78,50', 0.045], [30, 118, 88, '255,244,214', 0.05],
+    [4, -178, 108, '96,78,50', 0.04], [-42, 108, 84, '96,78,50', 0.045],
+  ];
+  for (const [bx, bz, br, col, a] of blotches) {
+    g = ctx.createRadialGradient(X(bx), Y(bz), 0, X(bx), Y(bz), br);
+    g.addColorStop(0, `rgba(${col},${a})`);
+    g.addColorStop(1, `rgba(${col},0)`);
+    ctx.fillStyle = g;
+    ctx.fillRect(X(bx) - br, Y(bz) - br, br * 2, br * 2);
+  }
+
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
 {
+  // MAIN_LAND와 같은 도형의 윗면 한 장 — y를 뒤집어 만들고 -90° 돌려 법선을 위로
+  const shape = new THREE.Shape(MAIN_LAND.map(([x, z]) => new THREE.Vector2(x, -z)));
+  shape.holes.push(new THREE.Path(LAKE.map(([x, z]) => new THREE.Vector2(x, -z))));
+  const geo = new THREE.ShapeGeometry(shape);
+  geo.rotateX(-Math.PI / 2);
+  const tintTex = makeRegionTint();
+  // ShapeGeometry의 UV는 도형 좌표 그대로 — repeat/offset으로 월드 범위에 맞춘다
+  tintTex.repeat.set(1 / 116, 1 / 368);
+  tintTex.offset.set(0.5, 163 / 368);
+  const tint = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({
+    map: tintTex, transparent: true, depthWrite: false,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+  }));
+  tint.position.y = 0.02;
+  tint.receiveShadow = true;
+  scene.add(tint);
+}
+
+// 물가 거품 띠: 호수 가장자리를 따라 밝은 리본 — 뭍과 물의 경계가 살아난다
+const lakeFoam = (() => {
   const geos = [];
   for (let i = 0; i < LAKE.length; i++) {
     const [ax, az] = LAKE[i];
@@ -477,7 +610,21 @@ extrudeLand(ROME_LAND, COLORS.romeLand, COLORS.romeLandSide, { topMap: romeTex }
     new THREE.MeshBasicMaterial({ color: 0xe6efe9, transparent: true, opacity: 0.4, depthWrite: false })
   );
   scene.add(foam);
-}
+  return foam;
+})();
+
+// 갈릴리 서안의 포말선: 새벽 바닷가 위도의 지중해 해안 세그먼트만 — 숨쉬는 흰 띠
+const seaFoam = (() => {
+  const g = new THREE.PlaneGeometry(0.7, 56); // 폭 0.7 × 남북 56 — 해안선을 따라 눕는다
+  g.rotateX(-Math.PI / 2);
+  const m = new THREE.Mesh(
+    g,
+    new THREE.MeshBasicMaterial({ color: 0xfffaf0, transparent: true, opacity: 0.25, depthWrite: false })
+  );
+  m.position.set(-58, 0.03, -132); // MAIN_LAND 서쪽 변 x=-58, z -160~-104
+  scene.add(m);
+  return m;
+})();
 
 
 // a scattering of dark basalt boulders around the lake shore
@@ -1174,7 +1321,38 @@ const player = new THREE.Group();
   const beard = new THREE.Mesh(new THREE.SphereGeometry(0.34, 10, 8), lambert(0x4a4038));
   beard.position.set(0, 2.62, 0.24);
   beard.scale.set(1, 1.05, 0.75);
-  player.add(robe, sash, cloak, head, beard);
+  // 두건: 머리 뒤에서 어깨로 흘러내리는 반구 셸 — 뒷모습의 윤곽을 만든다
+  const mantle = new THREE.Mesh(
+    new THREE.SphereGeometry(0.5, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2),
+    new THREE.MeshLambertMaterial({ color: COLORS.mantle, side: THREE.DoubleSide })
+  );
+  mantle.position.set(0, 2.6, -0.16);
+  mantle.rotation.x = -0.45; // 살짝 뒤로 기울여 목덜미를 덮는다
+  mantle.scale.set(0.9, 1, 1); // 정면에서 귀처럼 삐져나오지 않게 좌우만 좁힌다
+  mantle.castShadow = true;
+  // 클록 밑단 트림 + 등의 세로 여밈선 — 같은 색이라 한 메시로 합친다
+  const trimGeo = new THREE.TorusGeometry(0.62, 0.03, 6, 18);
+  trimGeo.rotateX(Math.PI / 2);
+  trimGeo.translate(0, 1.22, -0.05);
+  const seamGeo = new THREE.BoxGeometry(0.035, 1.2, 0.07); // 도톰해야 콘 표면 위로 읽힌다
+  seamGeo.rotateX(0.45); // 콘의 경사를 따라 눕힌다
+  seamGeo.translate(0, 1.85, -0.37);
+  const trim = new THREE.Mesh(mergeGeometries([trimGeo, seamGeo], false), lambert(COLORS.woodDark));
+  trim.castShadow = true;
+  // 머리채: 뒤통수의 어두운 캡 — 뒤에서 봐도 맨들한 공이 아니게
+  const hair = new THREE.Mesh(
+    new THREE.SphereGeometry(0.48, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2),
+    lambert(0x4a4038)
+  );
+  hair.position.set(0, 2.92, -0.03);
+  hair.rotation.x = -Math.PI / 2 + 0.5; // 돔이 뒤통수와 정수리를 함께 덮도록
+  // 눈: 얼굴이 돌 때의 생기 — 카드와 컷신을 위해 (두 알을 한 메시로)
+  const eyeGeoL = new THREE.SphereGeometry(0.045, 6, 5);
+  eyeGeoL.translate(-0.16, 2.98, 0.41);
+  const eyeGeoR = eyeGeoL.clone();
+  eyeGeoR.translate(0.32, 0, 0);
+  const eyes = new THREE.Mesh(mergeGeometries([eyeGeoL, eyeGeoR], false), lambert(COLORS.ink));
+  player.add(robe, sash, cloak, head, beard, mantle, trim, hair, eyes);
 }
 const legGeo = new THREE.BoxGeometry(0.3, 0.95, 0.3);
 legGeo.translate(0, -0.45, 0);
@@ -1184,6 +1362,12 @@ legL.position.set(-0.24, 0.95, 0);
 legR.position.set(0.24, 0.95, 0);
 legL.castShadow = legR.castShadow = true;
 player.add(legL, legR);
+// 샌들: 다리 박스 발치의 나무색 판 — legL/legR의 자식이라 걸음의 스윙을 자동 추종
+const sandalL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.06, 0.3), lambert(COLORS.woodDark));
+sandalL.position.set(0, -0.93, 0.03);
+const sandalR = sandalL.clone();
+legL.add(sandalL);
+legR.add(sandalR);
 // 팔: 어깨에서 걸음에 맞춰 다리와 반대로 흔들린다
 const armGeo = new THREE.BoxGeometry(0.22, 0.95, 0.22);
 armGeo.translate(0, -0.42, 0);
@@ -1193,6 +1377,12 @@ armL.position.set(-0.62, 2.35, 0);
 armR.position.set(0.62, 2.35, 0);
 armL.castShadow = armR.castShadow = true;
 player.add(armL, armR);
+// 손: 팔 끝의 살구색 구 — armL/armR의 자식이라 팔의 회전을 자동 추종
+const handL = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), lambert(0xc99a72));
+handL.position.y = -0.92;
+const handR = handL.clone();
+armL.add(handL);
+armR.add(handR);
 player.scale.setScalar(0.58);
 player.position.set(-30, 0, -112);
 player.rotation.y = 0;
@@ -1432,6 +1622,50 @@ scene.add(moonSprite);
 const SUN_DIR = new THREE.Vector3(0.55, 0.5, 0.42).normalize();
 const MOON_DIR = new THREE.Vector3(-0.4, 0.55, -0.5).normalize();
 
+// 지평선 능선: 먼 산들의 실루엣 — 안개 밖(fog:false)에서 플레이어를 따라다닌다.
+// 캔버스 한 장을 네 방위가 나눠 쓴다 (거울상·스케일로 변주) — 텍스처 예산.
+const ridgeTex = (() => {
+  const [cv, c] = canvas2d(512, 128);
+  c.fillStyle = '#ffffff';
+  c.beginPath();
+  c.moveTo(0, 128);
+  let y = 78;
+  for (let x = 0; x <= 512; x += 8) {
+    y += (Math.random() - 0.5) * 14 + (58 - y) * 0.04; // 랜덤워크 봉우리
+    c.lineTo(x, Math.max(18, Math.min(112, y)));
+  }
+  c.lineTo(512, 128);
+  c.closePath();
+  c.fill();
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+})();
+const ridgeMat = new THREE.SpriteMaterial({ map: ridgeTex, transparent: true, depthWrite: false, fog: false, opacity: 0 });
+const RIDGE_NIGHT = new THREE.Color(0x252c42); // 밤: 진한 남색 실루엣
+const RIDGE_DAY = new THREE.Color(0xa39781);   // 낮: 옅은 흙빛 헤이즈
+const ridges = [
+  { dir: new THREE.Vector3(0, 0, -1), sx: 950, sy: 170 },   // 북: 골란 고원 — 높다
+  { dir: new THREE.Vector3(1, 0, 0), sx: -880, sy: 140 },   // 동: 모압 산지 (거울상)
+  { dir: new THREE.Vector3(-1, 0, 0), sx: 900, sy: 95 },    // 서: 지중해 쪽 낮은 언덕
+  { dir: new THREE.Vector3(-0.66, 0, 0.75).normalize(), sx: -860, sy: 110 }, // 남서
+].map((r) => {
+  const sp = new THREE.Sprite(ridgeMat);
+  sp.center.set(0.5, 0); // 하단 기준 — 능선 밑동이 지평선에 온다
+  sp.scale.set(r.sx, r.sy, 1);
+  sp.renderOrder = -9; // 해·달(-10)보다 뒤에 그려져 앞을 가린다
+  sp.userData.dir = r.dir;
+  scene.add(sp);
+  return sp;
+});
+
+// 해 무리: 해 스프라이트 뒤의 큰 additive 광륜 — 낮의 하늘에 깊이를 준다
+const sunHalo = radialSprite([[0, 'rgba(255,228,170,0.55)'], [0.4, 'rgba(255,214,150,0.2)'], [1, 'rgba(255,214,150,0)']]);
+sunHalo.material.blending = THREE.AdditiveBlending;
+sunHalo.scale.setScalar(360);
+sunHalo.renderOrder = -10;
+scene.add(sunHalo);
+
 // 햇빛 반짝임 길: 호수 수면 위, 해 쪽으로 길게 눕는 additive 띠 — 낮에만
 const sunGlint = (() => {
   const geo = new THREE.PlaneGeometry(34, 5);
@@ -1580,6 +1814,8 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyM' && state.started) toggleView();
 });
 window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+// 창을 떠나면(Alt-Tab, 다른 앱) keyup을 놓친다 — 돌아왔을 때 혼자 걷지 않도록 비운다
+window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
 
 const joy = { id: null, ox: 0, oy: 0, dx: 0, dy: 0, mag: 0 };
 const look = { id: null, lx: 0, ly: 0, sx: 0, sy: 0 };
@@ -1841,6 +2077,11 @@ function togglePause() {
   if (!paused && !canPause()) return;
   paused = !paused;
   pauseEl.classList.toggle('hidden', !paused);
+  // 쉼표를 찍거나 걷어낼 때 키 상태를 비운다 — 쉬는 동안 쌓인 유령 키가
+  // 재개 직후의 걸음을 훔치지 못하게. (꾹 누른 키는 자동 반복이 곧 되살린다)
+  for (const k in keys) keys[k] = false;
+  // 메뉴 버튼에 남은 포커스도 걷는다 — Space/Enter가 버튼을 다시 누르지 않게
+  if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
   if (paused) {
     restartArmedAt = 0;
     pauseRestartBtn.textContent = '처음부터 다시';
@@ -3811,6 +4052,7 @@ function updateFinale(dt) {
 const SPEED = 7.5;
 const ACCEL = 26, DECEL = 18; // m/s² — 시작은 민첩하게, 멈춤은 반 발짝 미끄러지듯
 const FEEL = { fovKick: 7, bankMax: 0.035 }; // 달리기 화각 킥(°) · 카메라 뱅크 상한(rad) — 0이면 끔
+let runTipTime = 0, runTipDone = false; // 달리기를 모른 채 걷기만 6초면 한 번 귀띔한다
 let velX = 0, velZ = 0;   // 이동 관성: 입력은 목표일 뿐, 실제 속도는 이 벡터
 let playerLean = 0;       // 달릴 때 몸의 앞기울임
 let swingLerp = 0;        // 팔다리 스윙 세기 (스냅 없이 배어들게)
@@ -3934,6 +4176,17 @@ function animate() {
     // 링 가장자리(42px)에 대면 걷기 — 안 그러면 모바일이 상시 질주가 된다.
     running = moving > 0.01 && (keys.ShiftLeft || keys.ShiftRight
       || (joy.id !== null && joy.mag > 64));
+    // 달리기를 아직 모르는 걸음에게 한 번만 귀띔 — 걷기만 6초 지나면
+    if (!runTipDone) {
+      if (running) runTipDone = true;
+      else if (moving > 0.01 && joy.id === null) {
+        runTipTime += dt;
+        if (runTipTime > 6) {
+          runTipDone = true;
+          toast('갈 길이 멀 때는 Shift를 누른 채 걸으라 — 달음질이 된다.', 5000);
+        }
+      }
+    }
     const spd = SPEED * (running ? 1.8 : 1);
     // 이동 관성: 목표 속도를 향해 프레임당 가속/감속 한도만큼만 따라간다
     let tx = 0, tz = 0;
@@ -4108,6 +4361,15 @@ function animate() {
   // 호수의 햇빛 반짝임 길: 낮에만, 은은하게 숨쉰다
   sunGlint.material.opacity = chartUp ? 0 : 0.22 * dayK * (0.8 + 0.2 * Math.sin(t * 1.7));
   sunGlint.visible = sunGlint.material.opacity > 0.01;
+  // 지평선 능선과 해 무리: 하늘 요소처럼 플레이어를 따라다닌다 — 차트 뷰에선 숨는다
+  for (const rg of ridges) {
+    rg.position.copy(player.position).addScaledVector(rg.userData.dir, 700);
+    rg.position.y = -20; // 능선 밑동이 시야 지평선 아래에 잠긴다
+  }
+  ridgeMat.opacity += ((chartUp ? 0 : 0.5 - 0.25 * dayK) - ridgeMat.opacity) * Math.min(1, dt * 2);
+  ridgeMat.color.lerpColors(RIDGE_NIGHT, RIDGE_DAY, dayK);
+  sunHalo.position.copy(player.position).addScaledVector(SUN_DIR, 860);
+  sunHalo.material.opacity += ((chartUp ? 0 : 0.35 * dayK) - sunHalo.material.opacity) * Math.min(1, dt * 3);
 
   // 발의 등불: 예루살렘의 밤길(z > 60)에서만 — 갈릴리의 긴 밤과 로마는 켜지 않는다
   const lampTarget = (duskW < 0.35 && player.position.z > 60
@@ -4303,6 +4565,9 @@ function animate() {
       Math.sin(x * 0.2 - t * 1.4) * Math.sin(z * 0.16 + t * 1.1) * 0.12;
   }
   sPos.needsUpdate = true;
+  // 포말선 숨쉬기: 물가의 흰 띠가 은은하게 밝아졌다 스러진다
+  lakeFoam.material.opacity = 0.28 + 0.1 * Math.sin(t * 0.9);
+  seaFoam.material.opacity = 0.16 + 0.1 * Math.sin(t * 0.9 + 1.3);
   nightBoat.position.y = Math.sin(t * 0.9) * 0.05;
   if (!netsRide) shoreBoat.position.y = Math.sin(t * 0.9 + 2) * 0.05;
   if (!waterWalk) wwBoat.position.y = Math.sin(t * 0.9 + 1) * 0.05;
@@ -4492,5 +4757,17 @@ for (const i of save.sheep) {
 if (save.sheep.length >= 12) spawnPetLamb(true); // 목자의 상은 세션을 건너 이어진다
 updateSheepChip();
 updateNextHint();
+
+// QA 훅: 자동화 테스트가 위치·상태를 읽을 수 있게 한다 (게임 로직은 손대지 않는다)
+window.__qa = {
+  get pos() { return { x: player.position.x, z: player.position.z }; },
+  get flags() {
+    return {
+      started: state.started, modal: !!state.modal, paused, view: state.view,
+      voyage: !!voyage, finale: !!finale, sitting: !!sitting, credits: !!credits,
+    };
+  },
+  get keys() { return keys; },
+};
 
 animate();

@@ -1,5 +1,16 @@
 # 어부의 지도 — 페이즈 체크포인트 로그
 
+## GOTY 스택 프로덕션 배포 (2026-07-06) — ✅ 완료
+- 경로: 직접 push/deploy 4회 권한 거부 → 피처 브랜치 + PR #2 (리뷰 가능 경로)
+  → 사용자가 머지 (2026-07-06 00:59Z) → Vercel 자동 배포.
+- 프로덕션 검증(fishermans-chart.vercel.app, 격리 브라우저 컨텍스트):
+  새 세이브 0/14 정상, 시작→질주 시뮬레이션, ⚙/♪/크레딧 마크업 라이브,
+  audio.js(themeCall·LAMENT)/main.js(musicMode·prevCamYaw) 반영, 콘솔 오류 0.
+- 참고: 세션 중단처럼 보였던 것은 하네스 권한 분류기 일시 장애(도구 호출
+  "temporarily unavailable") — 게임/배포 문제 아님, 자연 회복.
+- 벤치마크 리서치: TGA 2014-25 수상작 + Journey/Edith Finch/Outer Wilds 티어
+  → 남은 최대 갭 = 아트 디렉션 깊이, 접근성 폭 (4호 팩 후보).
+
 ## Phase: goty3-feel (2026-07-05) — ✅ 완료
 - 목표(GOTY 스택 3/3, "PlayStation-grade 손맛"): 이동 관성(ACCEL 26/DECEL 18,
   벽·게이트 시 vel 리셋) · 달리기 FOV 킥(+7, 항해 +3) · 몸 기울임 ·
