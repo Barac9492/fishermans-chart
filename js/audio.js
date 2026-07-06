@@ -2,7 +2,8 @@
    Procedural soundscape for The Fisherman's Chart.
    Everything is synthesized with the Web Audio API — wind, lake-lap,
    gulls, footsteps, a fire's crackle, a rooster, a wind-rush for
-   Pentecost, and the horns of the finale. No audio files are shipped.
+   Pentecost, the horns of the finale — and a leitmotif score that
+   follows the story's regions and turns. No audio files are shipped.
    ============================================================ */
 
 let ctx = null;
@@ -13,10 +14,14 @@ let noiseBuf = null; // one shared white-noise buffer for every noise voice
 
 let waterDistGain = null; // lake-lap loudness by distance to the shoreline
 let fireDistGain = null;  // crackle loudness by distance to the nearest fire
+let music = null;     // 주제곡 버스 — 모드 크로스페이드가 사는 곳
+let musicDuck = null; // 카드가 열리면 음악도 한 걸음 물러선다 (모드 페이드와 곱)
 let muted = false;
 let ducked = false;
 let gullTimer = 8;
 let crackleTimer = 3;
+let musicMode = 'off'; // 지역과 서사가 정해 주는 음악의 색
+let musicTimer = 6;    // 다음 소절까지 남은 침묵
 
 function makeNoise(seconds) {
   const buf = ctx.createBuffer(1, (ctx.sampleRate * seconds) | 0, ctx.sampleRate);
@@ -70,6 +75,108 @@ function chordPad(freqs) {
 }
 let padDay = null;   // 갈릴리의 낮 — 따뜻한 열린 5도 (D–A–D)
 let padNight = null; // 예루살렘의 밤 — 낮게 가라앉은 단조 빛깔 (A–E–C)
+
+/* ---------------- 주제곡: 베드로의 라이트모티프 ----------------
+   하나의 "부름" 주제가 지역과 서사를 따라 색을 바꾼다. 갈릴리에선 장조로
+   드문드문, 예루살렘에선 낮은 단조로, 부인 뒤에는 거의 침묵(슬픔은 부재),
+   회복 뒤에는 한 옥타브 위에서 돌아온다. 파일 없이 전부 신스. */
+
+const ROOT = 293.66; // D4 — 패드(D–A–D)와 같은 뿌리
+const SCALES = {
+  maj: [0, 2, 4, 7, 9, 12, 14, 16],   // 장조 펜타토닉 확장
+  min: [0, 3, 5, 7, 10, 12, 15, 17],  // 단조 펜타토닉 확장
+};
+// 베드로 주제: "부름" — 도약해 오르고, 되묻듯 내려온다. [음계 인덱스, 박]
+const THEME_A = [[0, 1], [2, 1], [4, 2], [3, 1], [2, 1], [0, 3]];
+const THEME_B = [[4, 1], [5, 1], [7, 2], [5, 1], [4, 1], [2, 3]]; // 응답구 (dawn/finale)
+const LAMENT = [[5, 2], [4, 2], [2, 2], [0, 5]];                  // 애가: 느린 하강
+
+// 모드별 목표 게인과, 소절 사이 침묵의 길이 [최소, 최대] (초)
+const MODE_GAIN = { galilee: 0.055, road: 0.04, jerusalem: 0.045, lament: 0.04, dawn: 0.075, finale: 0.11, silent: 0, off: 0 };
+const MODE_REST = { galilee: [14, 26], road: [26, 45], jerusalem: [20, 35], lament: [45, 75], dawn: [10, 20], finale: [2, 4] };
+
+function degToFreq(scale, deg, octShift) {
+  return ROOT * 2 ** (SCALES[scale][deg] / 12) * 2 ** octShift;
+}
+
+// "숨결" 리드: 사인파가 천천히 부풀었다 스러지고, 어택이 끝난 뒤에야 비브라토가 깨어난다
+function breathNote(freq, gain, when, dur, dest = musicDuck) {
+  const o = ctx.createOscillator();
+  o.type = 'sine';
+  o.frequency.value = freq;
+  const vib = ctx.createOscillator(); // 5Hz, ±4센트의 미세한 떨림
+  vib.frequency.value = 5;
+  const vd = ctx.createGain();
+  vd.gain.setValueAtTime(0, when);
+  vd.gain.linearRampToValueAtTime(freq * 0.0023, when + 0.5);
+  vib.connect(vd).connect(o.frequency);
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 1600;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, when);
+  g.gain.linearRampToValueAtTime(gain, when + 0.15);
+  g.gain.setValueAtTime(gain, when + dur);
+  g.gain.linearRampToValueAtTime(0, when + dur + 0.4);
+  o.connect(lp).connect(g).connect(dest);
+  o.start(when);
+  o.stop(when + dur + 0.45);
+  vib.start(when);
+  vib.stop(when + dur + 0.45);
+}
+
+// 수금 한 줄을 뜯는 소리: 즉시 일어나 1.6초에 걸쳐 잦아든다
+function pluckNote(freq, gain, when, dest = musicDuck) {
+  const o = ctx.createOscillator();
+  o.type = 'triangle';
+  o.frequency.value = freq;
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 1200;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(gain, when);
+  g.gain.exponentialRampToValueAtTime(0.0001, when + 1.6);
+  o.connect(lp).connect(g).connect(dest);
+  o.start(when);
+  o.stop(when + 1.65);
+}
+
+// 소절 한 줄을 절대시각으로 통째 예약한다 (프레임별 예약 금지).
+// voices: 'breath' | 'pluck' | 'both' | 'ends'(숨결 리드에 처음·끝 음만 수금 더블링)
+// 반환값은 소절의 길이(초).
+function scheduleLine(notes, scale, oct, when, beat, gMul, voices, dest = musicDuck) {
+  let tt = when;
+  notes.forEach(([deg, beats], i) => {
+    const f = degToFreq(scale, deg, oct);
+    const at = tt + (Math.random() - 0.5) * 0.04;        // ±0.02s의 사람 손 떨림
+    const gj = gMul * (0.9 + Math.random() * 0.2);       // ±10% 게인 흔들림
+    if (voices !== 'pluck') breathNote(f, 0.9 * gj, at, beats * beat * 0.9, dest);
+    const endPluck = voices === 'ends' && (i === 0 || i === notes.length - 1);
+    if (voices === 'pluck' || voices === 'both' || endPluck) pluckNote(f, 0.5 * gj, at, dest);
+    tt += beats * beat;
+  });
+  return tt - when;
+}
+
+// 모드에 맞는 소절 하나를 예약하고 그 길이(초)를 돌려준다
+function schedulePhrase(mode) {
+  const t0 = ctx.currentTime + 0.08;
+  const BEAT = 0.62;
+  if (mode === 'galilee') return scheduleLine(THEME_A, 'maj', 0, t0, BEAT, 1, 'ends');
+  if (mode === 'road') return scheduleLine(THEME_A.slice(0, 3), 'maj', 0, t0, BEAT, 1, 'pluck'); // 주제의 파편만
+  if (mode === 'jerusalem') return scheduleLine(THEME_A, 'min', -1, t0, BEAT, 0.8, 'breath');
+  if (mode === 'lament') return scheduleLine(LAMENT, 'min', 0, t0, 1.0, 1, 'breath'); // 홀로, 느리게 하강
+  if (mode === 'dawn') { // 주제가 한 옥타브 위에서 돌아오고, 두 박 뒤 응답구가 겹친다
+    const a = scheduleLine(THEME_A, 'maj', 1, t0, BEAT, 1, 'breath');
+    const b = 2 * BEAT + scheduleLine(THEME_B, 'maj', 0, t0 + 2 * BEAT, BEAT, 1, 'pluck');
+    return Math.max(a, b);
+  }
+  if (mode === 'finale') { // 주제 전체 진술: 부름과 응답이 잇달아, 모든 목소리로
+    const a = scheduleLine(THEME_A, 'maj', 0, t0, BEAT, 1.2, 'both');
+    return a + scheduleLine(THEME_B, 'maj', 1, t0 + a, BEAT, 1.2, 'both');
+  }
+  return 0;
+}
 
 function startAmbience() {
   // 바람: 로우패스 두 장을 겹쳐(24dB/oct) 히스를 걷어낸 낮은 웅웅거림.
@@ -353,6 +460,12 @@ export const audio = {
     ambience.connect(master);
     sfx = ctx.createGain();
     sfx.connect(master);
+    // 주제곡 버스: 보이스 → musicDuck(덕킹) → music(모드 레벨) → master — 두 페이드가 곱이 된다
+    music = ctx.createGain();
+    music.gain.value = 0;
+    music.connect(master);
+    musicDuck = ctx.createGain();
+    musicDuck.connect(music);
     noiseBuf = makeNoise(2);
     startAmbience();
     ctx.resume();
@@ -367,7 +480,7 @@ export const audio = {
     });
   },
 
-  // dt in seconds; o = { px, pz, shore, fireDist, warmth, ducked }
+  // dt in seconds; o = { px, pz, shore, fireDist, warmth, ducked, music }
   update(dt, o) {
     if (!ctx || ctx.state !== 'running') return;
     const t = ctx.currentTime;
@@ -388,6 +501,24 @@ export const audio = {
     if (o.ducked !== ducked) {
       ducked = o.ducked;
       ambience.gain.setTargetAtTime(ducked ? 0.35 : 1, t, 0.3);
+      musicDuck.gain.setTargetAtTime(ducked ? 0.3 : 1, t, 0.4);
+    }
+
+    // 주제곡: 서사가 정한 모드로 천천히 건너가고, 침묵이 다하면 소절 하나를 통째로 예약한다
+    if (o.music && o.music !== musicMode) {
+      musicMode = o.music;
+      music.gain.setTargetAtTime(MODE_GAIN[musicMode] ?? 0, t, 2.0);
+      musicTimer = Math.min(musicTimer, 3 + Math.random() * 3);
+    }
+    musicTimer -= dt;
+    if (musicTimer <= 0) {
+      if ((MODE_GAIN[musicMode] ?? 0) > 0) {
+        const len = schedulePhrase(musicMode);
+        const [rMin, rMax] = MODE_REST[musicMode];
+        musicTimer = len + rMin + Math.random() * (rMax - rMin);
+      } else {
+        musicTimer = 2; // 침묵 속에서도 가끔 깨어나 때를 살핀다
+      }
     }
 
     crackleTimer -= dt;
@@ -404,6 +535,11 @@ export const audio = {
   },
 
   play(name, opts = {}) {
+    if (name === 'themeCall' && ctx && ctx.state === 'suspended' && !opts.retried) {
+      // 시작 클릭 직후엔 컨텍스트가 아직 깨어나는 중일 수 있다 — 깨어난 뒤 한 번만 다시 부른다
+      ctx.resume().then(() => this.play('themeCall', { retried: true }));
+      return;
+    }
     if (!ctx || ctx.state !== 'running') return;
     switch (name) {
       case 'step': step(false); break;
@@ -420,6 +556,16 @@ export const audio = {
       case 'windRush': windRush(opts.gain ?? 0.3); break;
       case 'splash': splash(opts.gain ?? 0.3); break;
       case 'bleat': bleat(opts.gain ?? 0.15); break;
+      case 'themeCall': { // 출항의 부름 — 시작의 문턱에서 주제가 한 번 지나간다
+        // 모드 버스의 자동화를 건드리지 않도록, 제 몫의 일회용 게인으로 마스터에 직접 닿는다
+        const t0 = ctx.currentTime;
+        const g = ctx.createGain();
+        g.gain.value = 0.09;
+        g.connect(master);
+        const len = scheduleLine(THEME_A, 'maj', 0, t0 + 0.05, 0.62, 1, 'breath', g);
+        setTimeout(() => g.disconnect(), (len + 3) * 1000);
+        break;
+      }
     }
   },
 

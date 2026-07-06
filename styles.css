@@ -39,7 +39,15 @@ html, body {
   backdrop-filter: blur(2px);
 }
 
-#intro { background: var(--sand); }
+/* 타이틀 뒤로 갈릴리의 새벽이 비쳐 보이는 반투명 양피지 스크림 */
+#intro {
+  background: linear-gradient(165deg,
+    rgba(236, 226, 196, 0.9),
+    rgba(236, 226, 196, 0.62) 55%,
+    rgba(199, 179, 138, 0.78));
+  backdrop-filter: blur(2.5px);
+  -webkit-backdrop-filter: blur(2.5px);
+}
 
 .intro-inner {
   max-width: 620px;
@@ -50,6 +58,22 @@ html, body {
 }
 
 @keyframes fadein { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; } }
+
+/* 타이틀 글줄이 위에서부터 차례로 배어 나온다 */
+.intro-inner > * {
+  opacity: 0;
+  animation: intro-step 0.7s ease forwards;
+}
+.intro-inner > *:nth-child(1) { animation-delay: 0.1s; }
+.intro-inner > *:nth-child(2) { animation-delay: 0.24s; }
+.intro-inner > *:nth-child(3) { animation-delay: 0.38s; }
+.intro-inner > *:nth-child(4) { animation-delay: 0.52s; }
+.intro-inner > *:nth-child(n + 5) { animation-delay: 0.66s; }
+@keyframes intro-step { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .intro-inner { animation: none; }
+  .intro-inner > * { opacity: 1; animation: none; }
+}
 
 .rule-top, .rule-bottom {
   height: 10px;
@@ -282,6 +306,23 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
 }
 #mute-btn:hover { transform: none; background: var(--sand); }
 #mute-btn.muted { opacity: 0.55; text-decoration: line-through; }
+
+#pause-btn {
+  position: absolute;
+  bottom: 110px;
+  left: 18px;
+  pointer-events: auto;
+  margin: 0;
+  width: 38px;
+  font-size: 16px;
+  padding: 6px 0;
+  color: var(--ink);
+  background: rgba(236, 226, 196, 0.92);
+  border: 1.5px solid var(--ink);
+  border-radius: 3px;
+  box-shadow: 2px 2px 0 rgba(43, 38, 32, 0.25);
+}
+#pause-btn:hover { transform: none; background: var(--sand); }
 
 /* 유물 보따리 — 찾은 곳마다 아이콘이 채워지는 14칸 선반 */
 #satchel {
@@ -770,6 +811,117 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
   background: radial-gradient(ellipse at center, rgba(20,26,40,0) 34%, rgba(10,14,26,0.95) 100%);
 }
 
+/* ---------- 일시정지 — 잠시 쉬어가기 ---------- */
+.pause-inner {
+  position: relative;
+  width: min(360px, 92vw);
+  margin: auto;
+  background: var(--sand);
+  border: 2px solid var(--ink);
+  box-shadow: 6px 6px 0 rgba(43, 38, 32, 0.4);
+  padding: 26px 28px 22px;
+  text-align: center;
+  animation: fadein 0.25s ease;
+}
+.pause-inner h2 {
+  font-family: 'Nanum Myeongjo', serif;
+  font-weight: 800;
+  font-size: clamp(21px, 4vw, 26px);
+  letter-spacing: 0.04em;
+}
+.pause-inner button {
+  display: block;
+  width: 100%;
+  margin: 12px 0 0;
+  font-size: 16px;
+  letter-spacing: 0.06em;
+  padding: 11px 16px;
+}
+#pause-resume { margin-top: 20px; }
+.pause-inner .pause-opt {
+  color: var(--ink);
+  background: rgba(236, 226, 196, 0.92);
+  border: 1.5px solid var(--ink);
+  box-shadow: 2px 2px 0 rgba(43, 38, 32, 0.25);
+}
+.pause-inner .pause-opt:hover { transform: none; background: var(--sand); }
+.pause-inner button.danger {
+  color: var(--red);
+  background: none;
+  border: 2px solid var(--red);
+  box-shadow: none;
+}
+.pause-inner button.danger:hover { transform: none; }
+.pause-controls {
+  margin-top: 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+.pause-inner .guide-link { margin-top: 8px; }
+
+/* ---------- 크레딧 롤 ---------- */
+#credits {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  overflow: hidden;
+  background: rgba(12, 12, 18, 0.94);
+  opacity: 0;
+  transition: opacity 1.2s ease;
+}
+#credits-scroll {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  padding: 0 24px;
+  text-align: center;
+  font-family: 'Nanum Myeongjo', serif;
+  color: #efe6cf;
+  will-change: transform;
+}
+.cr-title {
+  font-size: clamp(30px, 6vw, 46px);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #d8b45a; /* 어둠 위의 금박 — --gold를 밝힌 톤 */
+}
+.cr-sub { font-style: italic; color: #cfc4a6; }
+.cr-head {
+  margin-top: 54px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.32em;
+  color: #d8b45a;
+}
+.cr-line {
+  margin-top: 10px;
+  font-size: clamp(15px, 2.4vw, 18px);
+  line-height: 1.7;
+}
+.cr-verse {
+  margin-top: 54px;
+  font-style: italic;
+  font-size: clamp(16px, 2.8vw, 20px);
+  color: #efe6cf;
+}
+.cr-end {
+  margin-top: 16px;
+  letter-spacing: 0.12em;
+  color: #cfc4a6;
+}
+#credits-skip {
+  position: absolute;
+  bottom: 22px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  color: rgba(239, 230, 207, 0.55);
+}
+
 /* ---------- voyage caption (scripted sea-crossing to Rome) ---------- */
 #voyage-caption {
   position: fixed;
@@ -795,4 +947,6 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
   #compass-arrow::before { top: 7px; border-left-width: 5px; border-right-width: 5px; border-bottom-width: 14px; }
   #view-btn { bottom: 14px; right: 14px; left: auto; font-size: 13px; padding: 7px 12px; }
   #mute-btn { bottom: 58px; right: 14px; left: auto; }
+  #pause-btn { bottom: 102px; right: 14px; left: auto; }
+  .pause-inner { padding: 22px 20px 18px; }
 }

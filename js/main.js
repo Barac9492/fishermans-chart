@@ -1565,6 +1565,11 @@ const keys = {};
 window.addEventListener('keydown', (e) => {
   if (e.target && e.target.tagName === 'INPUT') return; // 이름 입력 중엔 게임 키를 먹지 않는다
   keys[e.code] = true;
+  if (credits) { skipCredits(); return; } // 크레딧: 아무 키나 눌러 건너뛴다
+  // 쉬어가기 — 쉬는 중이면 다시 걷기. 쉴 수 없는 자리(컷신)에선 삼키지 않고
+  // 아래의 건너뛰기 사슬로 흘려보낸다 (Esc로도 컷신을 넘길 수 있게).
+  if (e.code === 'Escape' && (paused || canPause())) { togglePause(); return; }
+  if (paused) return; // 쉬는 동안 다른 키는 조용히 잠든다
   if (finale) { skipFinale(); return; }
   if (voyage) { skipVoyage(); return; }
   if (eclipse) { skipEclipse(); return; }
@@ -1586,13 +1591,14 @@ function onUi(e) {
 }
 
 window.addEventListener('pointerdown', (e) => {
+  if (credits) return; // 크레딧: 탭 스킵은 #credits 자신의 클릭이 처리한다
   if (finale) { skipFinale(); return; }
   if (voyage) { skipVoyage(); return; }
   if (eclipse) { skipEclipse(); return; }
   if (sleepFx) { resistSleep(); return; } // 겟세마네: 화면 어디든 탭해서 버틴다
   if (sitting) { standUp(); return; } // 앉아 쉬는 중: 화면 어디든 탭하면 일어난다
   if (waterWalk && waterWalk.phase === 'boarding') { skipWaterWalk(); return; }
-  if (!state.started || state.modal || onUi(e)) return;
+  if (!state.started || state.modal || paused || onUi(e)) return;
   const wantsJoy = e.pointerType === 'touch' && e.clientX < window.innerWidth * 0.45;
   if (wantsJoy && joy.id === null) {
     if (touchHintHide) touchHintHide();
@@ -1656,7 +1662,7 @@ const SAVE_KEY = 'fisherman-chart-v1';
 const save = (() => {
   let s = {};
   try { s = JSON.parse(localStorage.getItem(SAVE_KEY) || '{}') || {}; } catch { /* private mode */ }
-  return Object.assign({ charted: [], epilogueShown: false, muted: false, sheep: [], sheepHint: false, name: '' }, s);
+  return Object.assign({ charted: [], epilogueShown: false, muted: false, sheep: [], sheepHint: false, name: '', creditsShown: false, quality: 'auto' }, s);
 })();
 function persistSave() {
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch { /* private mode */ }
@@ -1779,8 +1785,13 @@ document.getElementById('start-btn').addEventListener('click', () => {
   introEl.classList.add('hidden');
   hudEl.classList.remove('hidden');
   state.started = true;
+  // 타이틀에서 물가를 돌던 시선을 그대로 이어받아 화면이 홱 돌지 않게 한다
+  cam.yaw = Math.atan2(camera.position.x - player.position.x, camera.position.z - player.position.z);
+  prevCamYaw = cam.yaw; // 뱅크 계산이 첫 프레임에 가짜 회전을 보지 않도록
   audio.init();
   audio.setMuted(save.muted);
+  // 출항의 부름: 주제가 처음으로 지나간다 (컨텍스트가 깨어날 짧은 틈을 두고)
+  setTimeout(() => audio.play('themeCall'), 150);
   if (window.innerWidth < 700) document.getElementById('chart-key').removeAttribute('open');
   toast(save.charted.length > 0
     ? '다시 바닷가예요. 이미 찾은 곳은 지도가 기억하고 있어요.'
@@ -1793,14 +1804,83 @@ function reflectMute() {
   muteBtn.classList.toggle('muted', save.muted);
   muteBtn.title = save.muted ? '소리가 꺼져 있어요 — 탭하여 켜기' : '소리가 켜져 있어요 — 탭하여 끄기';
 }
-muteBtn.addEventListener('click', () => {
+function toggleMute() {
   save.muted = !save.muted;
   persistSave();
   audio.setMuted(save.muted);
   reflectMute();
-});
+  reflectPauseLabels(); // 일시정지 메뉴의 '소리' 라벨도 함께
+}
+muteBtn.addEventListener('click', toggleMute);
 audio.setMuted(save.muted);
 reflectMute();
+
+/* ---------------- 일시정지 — 잠시 쉬어가기 ---------------- */
+
+let paused = false;
+let restartArmedAt = 0; // '처음부터 다시' 2단 확인의 팔림 시각
+const pauseEl = document.getElementById('pause');
+const pauseBtn = document.getElementById('pause-btn');
+const pauseSoundBtn = document.getElementById('pause-sound');
+const pauseQualityBtn = document.getElementById('pause-quality');
+const pauseRestartBtn = document.getElementById('pause-restart');
+const QUALITY_LABELS = { auto: '화질: 자동', high: '화질: 풍성하게', lite: '화질: 가볍게' };
+
+function reflectPauseLabels() {
+  pauseSoundBtn.textContent = save.muted ? '소리: 끔' : '소리: 켬';
+  pauseQualityBtn.textContent = QUALITY_LABELS[save.quality] || QUALITY_LABELS.auto;
+}
+
+// 컷신·연출이 흐르는 동안에는 쉼표를 찍을 수 없다
+function canPause() {
+  return state.started && !state.modal && !voyage && !finale && !eclipse
+    && !sleepFx && !sitting && !waterWalk && !netsRide && !leapFx && !flowBusy;
+}
+
+function togglePause() {
+  if (!paused && !canPause()) return;
+  paused = !paused;
+  pauseEl.classList.toggle('hidden', !paused);
+  if (paused) {
+    restartArmedAt = 0;
+    pauseRestartBtn.textContent = '처음부터 다시';
+    reflectPauseLabels();
+  }
+}
+
+document.getElementById('pause-resume').addEventListener('click', togglePause);
+pauseBtn.addEventListener('click', () => { if (!paused) togglePause(); });
+pauseSoundBtn.addEventListener('click', toggleMute);
+
+// 화질: 자동(측정에 맡김) → 풍성하게(포스트 켬) → 가볍게(포스트 끔)
+function applyQuality(q) {
+  if (q === 'high') { usePost = true; fpsGate.done = true; }
+  else if (q === 'lite') { usePost = false; fpsGate.done = true; }
+  // 'auto'는 세션 중엔 현재 상태 유지 — 재부팅하면 FPS 게이트가 다시 판단한다
+}
+applyQuality(save.quality); // 지난 세션의 선택을 이어받는다
+pauseQualityBtn.addEventListener('click', () => {
+  const order = ['auto', 'high', 'lite'];
+  save.quality = order[(order.indexOf(save.quality) + 1) % order.length];
+  persistSave();
+  applyQuality(save.quality);
+  reflectPauseLabels();
+});
+
+// 처음부터 다시: 두 번 물어 확인한다 (인트로의 reset-link와 같은 동작)
+pauseRestartBtn.addEventListener('click', () => {
+  const now = Date.now();
+  if (restartArmedAt && now - restartArmedAt < 3000) {
+    try { localStorage.removeItem(SAVE_KEY); } catch { /* private mode */ }
+    location.reload();
+    return;
+  }
+  restartArmedAt = now;
+  pauseRestartBtn.textContent = '정말 처음부터? (한 번 더)';
+  setTimeout(() => {
+    if (Date.now() - restartArmedAt >= 3000) pauseRestartBtn.textContent = '처음부터 다시';
+  }, 3200);
+});
 
 function tryVisit() {
   if (state.modal || voyage || finale || flowBusy) return;
@@ -2162,8 +2242,93 @@ document.getElementById('epilogue-close').addEventListener('click', () => {
   if (ghostClick()) return;
   epilogueEl.classList.add('hidden');
   state.modal = false;
+  // 열네 곳을 모두 새긴 첫 완주 — 크레딧이 한 번 흐른다
+  if (state.visitedCount === SITES.length && !save.creditsShown) {
+    save.creditsShown = true;
+    persistSave();
+    startCredits();
+    return;
+  }
   toast('이제 지도를 자유롭게 걸어요 — 선착장의 배를 타면 성지로 돌아갈 수 있어요. 어느 표지든 다시 찾으면 이야기를 또 읽을 수 있어요.', 7000);
 });
+
+/* ---------------- 크레딧 롤 — 완주의 끝에 이름들이 흐른다 ---------------- */
+
+let credits = null;
+const creditsEl = document.getElementById('credits');
+const creditsScrollEl = document.getElementById('credits-scroll');
+const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function buildCreditsDom() {
+  creditsScrollEl.innerHTML = '';
+  const add = (cls, text) => {
+    const p = document.createElement('p');
+    p.className = cls;
+    p.textContent = text;
+    creditsScrollEl.appendChild(p);
+  };
+  add('cr-title', '어부의 지도');
+  add('cr-line cr-sub', '시몬, 베드로라 불린 이 · 갈릴리에서 로마까지');
+  add('cr-line', '🐟');
+  add('cr-head', '열네 곳의 참된 장소들');
+  for (const s of [...SITES].sort((a, b) => a.num - b.num)) {
+    add('cr-line', `${s.num}. ${s.title} — ${s.dates}`);
+  }
+  add('cr-head', '말씀');
+  add('cr-line', '누가복음 · 마태복음 · 마가복음 · 요한복음 · 사도행전 · 시편');
+  add('cr-head', '길 위의 동행');
+  add('cr-line', '잃은 양 열두 마리 · 목자 · 요나의 물고기 · 어린 양');
+  add('cr-head', '지은 도구');
+  add('cr-line', 'Three.js · Web Audio API · 그리고 종이 대신 빛');
+  add('cr-head', '이 지도를 걸은 사람');
+  add('cr-line', save.name || '이름 없는 순례자');
+  add('cr-verse', '"너는 나를 따르라" — 요한복음 21:22');
+  add('cr-line cr-end', '끝 — 그리고 시작.');
+}
+
+function startCredits() {
+  if (credits) return;
+  buildCreditsDom();
+  hudEl.classList.add('hidden');
+  creditsEl.classList.remove('hidden');
+  requestAnimationFrame(() => { creditsEl.style.opacity = '1'; });
+  const H = window.innerHeight;
+  credits = {
+    t: 0,
+    from: H,                                       // 첫 줄이 화면 아래에서 올라와
+    to: H * 0.5 - creditsScrollEl.offsetHeight,    // 마지막 줄이 가운데서 멈춘다
+    dur: REDUCED_MOTION ? 0 : 45,
+    hold: 3, // 끝 화면 정지
+    done: false,
+  };
+  // 움직임을 줄인 환경: 즉시 끝 화면을 보이고, 탭으로 닫는다
+  creditsScrollEl.style.transform = `translateY(${REDUCED_MOTION ? credits.to : credits.from}px)`;
+}
+
+function updateCredits(dt) {
+  credits.t += dt;
+  if (credits.dur > 0) {
+    const k = Math.min(1, credits.t / credits.dur);
+    creditsScrollEl.style.transform = `translateY(${credits.from + (credits.to - credits.from) * k}px)`;
+    if (credits.t >= credits.dur + credits.hold) endCredits();
+  }
+}
+
+function skipCredits() { endCredits(); }
+
+function endCredits() {
+  if (!credits || credits.done) return;
+  credits.done = true;
+  creditsEl.style.opacity = '0';
+  setTimeout(() => {
+    creditsEl.classList.add('hidden');
+    creditsScrollEl.innerHTML = '';
+    if (state.started && !finale) hudEl.classList.remove('hidden');
+    credits = null;
+  }, 1300);
+}
+
+creditsEl.addEventListener('click', skipCredits);
 
 /* ---------------- the voyage to Rome ---------------- */
 
@@ -3644,6 +3809,13 @@ function updateFinale(dt) {
 /* ---------------- movement & loop ---------------- */
 
 const SPEED = 7.5;
+const ACCEL = 26, DECEL = 18; // m/s² — 시작은 민첩하게, 멈춤은 반 발짝 미끄러지듯
+const FEEL = { fovKick: 7, bankMax: 0.035 }; // 달리기 화각 킥(°) · 카메라 뱅크 상한(rad) — 0이면 끔
+let velX = 0, velZ = 0;   // 이동 관성: 입력은 목표일 뿐, 실제 속도는 이 벡터
+let playerLean = 0;       // 달릴 때 몸의 앞기울임
+let swingLerp = 0;        // 팔다리 스윙 세기 (스냅 없이 배어들게)
+let bankLerp = 0;         // 카메라 뱅크 현재값
+let prevCamYaw = 0;
 let needleAngle = 0;
 let walkPhase = 0;
 let lastStepSign = true;
@@ -3712,6 +3884,30 @@ function angleLerp(a, b, t) {
   return a + d * t;
 }
 
+function angleDelta(a, b) { // a → b 최단각 차
+  let d = (b - a) % (Math.PI * 2);
+  if (d > Math.PI) d -= Math.PI * 2;
+  if (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
+// 주제곡의 모드: 지역의 빛(duskW)과 서사의 진행이 음악의 색을 정한다.
+// 부인(첫 불)과 회복(두 번째 불) 사이는 거의 침묵 — 슬픔은 부재로 말한다.
+function musicMode() {
+  if (!state.started) return 'off';
+  if (credits) return 'finale'; // 크레딧: 주제의 전체 진술이 이름들을 배웅한다
+  if (paused) return 'silent';  // 쉬는 동안엔 음악도 함께 쉰다
+  if (eclipse || sleepFx || sitting) return 'silent'; // 연출이 말할 때 음악은 물러선다
+  if (finale) return 'finale';
+  const denied = markerById['first-fire'].visited;
+  const restored = markerById['second-fire'].visited;
+  if (denied && !restored) return 'lament';
+  if (restored && duskW > 0.45) return 'dawn'; // 주제가 한 옥타브 위에서 돌아온다
+  if (duskW > 0.6) return 'galilee';
+  if (duskW < 0.3) return 'jerusalem';
+  return 'road';
+}
+
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
@@ -3731,7 +3927,7 @@ function animate() {
   const fwdX = -Math.sin(effYaw), fwdZ = -Math.cos(effYaw);
   const rightX = Math.cos(effYaw), rightZ = -Math.sin(effYaw);
   let moving = 0, dirX = 0, dirZ = 0, running = false;
-  if (state.started && !state.modal && !voyage && !finale && !sitting) {
+  if (state.started && !state.modal && !voyage && !finale && !sitting && !paused && !credits) {
     const [mx, mz] = moveInput();
     moving = Math.hypot(mx, mz);
     // 달리기: Shift(키보드), 또는 엄지를 조이스틱 링 "바깥"까지 일부러 밀었을 때만 1.8배.
@@ -3739,36 +3935,53 @@ function animate() {
     running = moving > 0.01 && (keys.ShiftLeft || keys.ShiftRight
       || (joy.id !== null && joy.mag > 64));
     const spd = SPEED * (running ? 1.8 : 1);
+    // 이동 관성: 목표 속도를 향해 프레임당 가속/감속 한도만큼만 따라간다
+    let tx = 0, tz = 0;
     if (moving > 0.01) {
       dirX = rightX * mx + fwdX * -mz;
       dirZ = rightZ * mx + fwdZ * -mz;
-      let nx = player.position.x + dirX * spd * dt;
-      let nz = player.position.z + dirZ * spd * dt;
-      if (!isWalkable(nx, player.position.z)) nx = player.position.x;
-      if (!isWalkable(nx, nz)) nz = player.position.z;
+      tx = dirX * spd;
+      tz = dirZ * spd;
+    }
+    const rate = (moving > 0.01 ? ACCEL : DECEL) * dt;
+    velX += Math.max(-rate, Math.min(rate, tx - velX));
+    velZ += Math.max(-rate, Math.min(rate, tz - velZ));
+    if (velX !== 0 || velZ !== 0) {
+      let nx = player.position.x + velX * dt;
+      let nz = player.position.z + velZ * dt;
+      if (!isWalkable(nx, player.position.z)) { nx = player.position.x; velX = 0; } // 벽에 대고 미는 관성 잔류 방지
+      if (!isWalkable(nx, nz)) { nz = player.position.z; velZ = 0; }
       [nx, nz] = collide(nx, nz);
       [nx, nz] = keepAwayFromCross(nx, nz);
       if (isWalkable(nx, nz)) player.position.set(nx, player.position.y, nz);
-      player.rotation.y = angleLerp(player.rotation.y, Math.atan2(dirX, dirZ), 0.2);
     }
+    if (moving > 0.01) player.rotation.y = angleLerp(player.rotation.y, Math.atan2(dirX, dirZ), 0.2);
+  } else {
+    velX = 0; velZ = 0; // 컷신·카드·크레딧에서 돌아온 직후 미끄러지지 않게
   }
-  walkPhase += dt * (4 + moving * 9) * (running ? 1.5 : 1);
-  const swing = moving > 0.01 ? 0.62 : 0;
+  const speedNow = Math.hypot(velX, velZ); // 애니메이션은 입력이 아니라 실제 속도를 따른다
+  walkPhase += dt * (4 + (speedNow / SPEED) * 9) * (running ? 1.5 : 1);
+  swingLerp += ((speedNow > 0.4 ? 0.62 : 0) - swingLerp) * Math.min(1, dt * 8);
   if (sitting) { // 앉은 자세: 다리는 앞으로 접고 팔은 무릎 위에
     legL.rotation.x = legR.rotation.x = 1.4;
     armL.rotation.x = armR.rotation.x = 0.55;
   } else {
-    legL.rotation.x = Math.sin(walkPhase) * swing;
-    legR.rotation.x = -Math.sin(walkPhase) * swing;
-    armL.rotation.x = -Math.sin(walkPhase) * swing * 0.8;
-    armR.rotation.x = Math.sin(walkPhase) * swing * 0.8;
+    const breath = Math.sin(t * 1.6) * 0.02; // 대기 자세의 미세한 숨 — 다리는 흔들지 않는다
+    legL.rotation.x = Math.sin(walkPhase) * swingLerp;
+    legR.rotation.x = -Math.sin(walkPhase) * swingLerp;
+    armL.rotation.x = -Math.sin(walkPhase) * swingLerp * 0.8 + breath;
+    armR.rotation.x = Math.sin(walkPhase) * swingLerp * 0.8 + breath;
   }
-  // 달릴 때 발밑 흙먼지
-  if (running && moving > 0.01) {
+  // 달릴 때 몸이 진행 방향으로 살짝 숙는다 (player.rotation.x는 여기서만 만진다)
+  const leanGoal = sitting ? 0 : Math.min(0.16, speedNow * 0.012);
+  playerLean += (leanGoal - playerLean) * Math.min(1, dt * 6);
+  player.rotation.x = playerLean;
+  // 발밑 흙먼지: 달리면 자주, 걸어도 옅게 — 물 위를 걸을 때는 먼지가 없다
+  if (speedNow > 3 && !waterWalk) {
     dustTimer -= dt;
     if (dustTimer <= 0) {
-      dustTimer = 0.16;
-      dustAt(player.position.x - dirX * 0.5, player.position.z - dirZ * 0.5);
+      dustTimer = running ? 0.16 : 0.5;
+      dustAt(player.position.x - (velX / speedNow) * 0.5, player.position.z - (velZ / speedNow) * 0.5);
     }
   }
 
@@ -3787,12 +4000,12 @@ function animate() {
     // 각본된 침몰·구원 중에는 updateWaterWalk가 직접 깊이를 다룬다
     waterWalkSink += (0 - waterWalkSink) * Math.min(1, dt * 2);
   }
-  player.position.y = sitting ? -0.38 : (moving > 0.01 ? Math.abs(Math.sin(walkPhase)) * 0.1 : 0) - waterWalkSink;
+  player.position.y = sitting ? -0.38 : Math.abs(Math.sin(walkPhase)) * 0.1 * Math.min(1, speedNow / SPEED) - waterWalkSink;
   // 가라앉을수록 화면 가장자리가 어두워진다
   if (sinkVeil) sinkVeil.style.opacity = String(Math.min(0.72, waterWalkSink * 1.4));
 
   const stepSign = Math.sin(walkPhase) >= 0;
-  if (moving > 0.01 && stepSign !== lastStepSign) {
+  if (speedNow > 0.8 && stepSign !== lastStepSign) {
     audio.play(onHolyLand(player.position.x, player.position.z) || onRome(player.position.x, player.position.z) ? 'step' : 'stepWood');
   }
   lastStepSign = stepSign;
@@ -3810,9 +4023,15 @@ function animate() {
   if (netsRide) updateNetsRide(dt);
   if (finale) updateFinale(dt);
   if (sitting) updateSitting(dt);
+  if (credits) updateCredits(dt);
   updateNetFx(dt);
 
-  if (finale) {
+  if (!state.started) {
+    // 타이틀 뒤: 갈릴리 새벽 물가를 아주 천천히 도는 시선
+    const a = t * 0.045;
+    _camPos.set(player.position.x + Math.sin(a) * 24, 7.5, player.position.z + Math.cos(a) * 24);
+    _lookGoal.set(player.position.x, 2.5, player.position.z);
+  } else if (finale) {
     const u = smoothstep01(Math.min(1, finale.t / (finale.dur - 3)));
     finale.curve.getPoint(u, _camPos);
     const dome = window.__basilica.dome;
@@ -3850,6 +4069,18 @@ function animate() {
   camera.position.lerp(_camPos, camK);
   lookTarget.lerp(_lookGoal, camK);
   camera.lookAt(lookTarget);
+  // 달리기 FOV 킥 + 회전 뱅크: 자유 보행 카메라에서만 (타이틀 궤도·차트·피날레는 중립)
+  const freeCam = state.started && !finale && !chartView;
+  const fovGoal = freeCam ? 55 + (running && speedNow > SPEED ? FEEL.fovKick : 0) + (voyage ? 3 : 0) : 55;
+  if (Math.abs(camera.fov - fovGoal) > 0.05) {
+    camera.fov += (fovGoal - camera.fov) * Math.min(1, dt * 4);
+    camera.updateProjectionMatrix();
+  }
+  const yawRate = angleDelta(prevCamYaw, cam.yaw) / Math.max(dt, 0.001); // rad/s
+  prevCamYaw = cam.yaw;
+  const bankGoal = freeCam ? Math.max(-FEEL.bankMax, Math.min(FEEL.bankMax, -yawRate * 0.02)) : 0;
+  bankLerp += (bankGoal - bankLerp) * Math.min(1, dt * 5);
+  camera.rotateZ(bankLerp); // 지평선이 아주 살짝 기운다 — 2° 상한, 멀미 방지
   const fv = FOG_VIEWS[state.view];
   scene.fog.near += (fv.near - scene.fog.near) * Math.min(1, dt * 2);
   scene.fog.far += (fv.far - scene.fog.far) * Math.min(1, dt * 2);
@@ -3912,12 +4143,12 @@ function animate() {
 
   // 배에 오르기 프롬프트: 물 위 걷기 배 근처 — 단, 3번의 차례가 되어야 배가 열린다
   const distBoard = Math.hypot(player.position.x - WW_BOARD.x, player.position.z - WW_BOARD.z);
-  const boardOn = state.started && !state.modal && !voyage && !finale && !waterWalk
+  const boardOn = state.started && !state.modal && !paused && !voyage && !finale && !waterWalk
     && distBoard < 6.5 && unlocked(markerById['fourth-watch']);
   state.boardMode = boardOn;
   // 로마 ↔ 성지 왕복 배: 13번을 다녀온 뒤에는 양쪽 선착장에서 언제든 오갈 수 있다
   let sailMode = null;
-  if (state.started && !state.modal && !voyage && !finale && !waterWalk && markerById['voyage-to-rome'].visited) {
+  if (state.started && !state.modal && !paused && !voyage && !finale && !waterWalk && markerById['voyage-to-rome'].visited) {
     const dRome = Math.hypot(player.position.x - ROME_LANDING.x, player.position.z - ROME_LANDING.z);
     const dJoppa = Math.hypot(player.position.x - JOPPA_BOARD.x, player.position.z - JOPPA_BOARD.z);
     if (dRome < 7) sailMode = 'back';
@@ -3928,7 +4159,7 @@ function animate() {
   const nearOpen = !!near && unlocked(near);
   // 쉼터 프롬프트: 그 자리의 이야기를 이미 겪은 뒤에만 — 미방문 표지 프롬프트를 가리지 않는다
   let sitSpot = null;
-  if (!sitting && state.started && !state.modal && !voyage && !finale && !waterWalk && !flowBusy
+  if (!sitting && state.started && !state.modal && !paused && !voyage && !finale && !waterWalk && !flowBusy
     && !(nearOpen && !near.visited)) {
     for (const s of REST_SPOTS) {
       if (markerById[s.gate].visited
@@ -3937,7 +4168,8 @@ function animate() {
   }
   state.sitMode = sitSpot;
   const promptOn = (boardOn || sailMode || sitSpot
-    || (nearOpen && state.started && !state.modal && !voyage && !finale)) && !flowBusy && !sitting;
+    || (nearOpen && state.started && !state.modal && !voyage && !finale)) && !flowBusy && !sitting
+    && !paused && !credits;
   visitBtn.classList.toggle('hidden', !promptOn);
   if (promptOn) {
     const flowNear = near && !near.visited && flows[near.site.id];
@@ -4226,7 +4458,8 @@ function animate() {
     shore: shoreCached,
     fireDist,
     warmth: duskW,
-    ducked: (state.modal && !finale && !voyage),
+    ducked: (state.modal && !finale && !voyage) || paused,
+    music: musicMode(),
   });
 
   if (usePost) {
