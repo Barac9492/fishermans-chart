@@ -1,5 +1,17 @@
 # 어부의 지도 — 페이즈 체크포인트 로그
 
+## Phase: goty5-fidelity (2026-07-06) — ✅ 완료
+- 목표(GOTY 스택 5호, 탈-로우폴리): 물리 하늘(Sky addon)+시간대별 PMREM 3장 ·
+  호수 평면 반사(high 전용, 캔버스 노멀맵) · 베드로 V2→V3(라테 로브·캡슐
+  사지·비율 재조정 — 성인 순례자 실루엣) · 땅 노멀맵+금 십자가 금속 재질.
+- 파이프라인: plan(Fable·high) → implementer(fable·medium, 291k, 이탈 6건)
+  → reviewer(sonnet·fresh, 93k, **FIX-THEN-SHIP** MAJOR 2·MINOR 1) →
+  오케스트레이터 수정 2건(fpsGate 실패 시 Sky 폴백, 숨은 호수 잔물결 계산
+  중단) + MAJOR 1건(lite의 재질/지오 상시 적용)은 근거 있는 이탈로 승인 →
+  비율·한낮 하늘 재조정 러너(155k).
+- 오케스트레이터 검증: 프레시 세이브 부팅·화질 3단·콘솔 0.
+- 산출물: tasks/{plan-goty5-fidelity,progress-goty5,review-goty5}.md
+
 ## GOTY 스택 프로덕션 배포 (2026-07-06) — ✅ 완료
 - 경로: 직접 push/deploy 4회 권한 거부 → 피처 브랜치 + PR #2 (리뷰 가능 경로)
   → 사용자가 머지 (2026-07-06 00:59Z) → Vercel 자동 배포.
