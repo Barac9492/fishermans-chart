@@ -6,6 +6,8 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { Sky } from 'three/addons/objects/Sky.js';
+import { Water } from 'three/addons/objects/Water.js';
 import { SITES, EPILOGUE } from './sites.js';
 import { audio } from './audio.js';
 
@@ -136,7 +138,7 @@ sun.shadow.mapSize.set(2048, 2048);
 sun.shadow.camera.far = 400;
 sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.03;
-sun.shadow.radius = 3;
+sun.shadow.radius = 4; // PCFSoft — 부드러운 그림자 가장자리
 scene.add(sun);
 scene.add(sun.target);
 
@@ -191,12 +193,89 @@ composer.addPass(filmPass);         // 비네트+그레인은 sRGB 공간에서
 let usePost = true;
 const fpsGate = { time: 0, frames: 0, done: false }; // 시작 후 4초 측정, 한 번만
 
-// 물 환경반사: 실패해도 게임은 계속 간다
+/* ---------------- 물리 하늘 (Sky addon) + 시간대별 환경맵 ----------------
+   낮과 어스름은 대기 산란 하늘이 맡고, 밤(duskW<0.3)은 기존 캔버스 하늘이
+   그대로 맡는다. 캔버스 하늘은 배경 텍스처라 페이드가 없으므로, 같은
+   텍스처를 입힌 얇은 돔을 Sky 위에 얹어 dayK로 크로스페이드한다. */
+
+// duskW → 해의 고도(도): 아침 18° → 어스름 6° → 2°, 밤으로 갈수록 지평선 아래로
+function skySunElevation(w) {
+  if (w >= 0.5) return 6 + (Math.min(w, 0.85) - 0.5) * (12 / 0.35);
+  if (w >= 0.35) return 2 + (w - 0.35) * (4 / 0.15);
+  return 2 - (0.35 - w) * 30;
+}
+// 해의 방위각은 기존 SUN_DIR(0.55, ·, 0.42)의 수평 방향과 맞춘다 — 반짝임 길과 일치
+const SKY_SUN_HX = 0.55 / Math.hypot(0.55, 0.42);
+const SKY_SUN_HZ = 0.42 / Math.hypot(0.55, 0.42);
+function setSkyUniforms(skyObj, w) {
+  const u = skyObj.material.uniforms;
+  u.turbidity.value = 6;
+  // 어스름엔 산란을 키워 노을을 붉게 — 한낮(w>0.7)엔 다시 키워 ACES 백화(白化)를 막고
+  // 하늘을 따뜻한 아침 파랑으로 되돌린다 (0.7→0.85에서 1.6→2.2 연속 보간, 팝 없음)
+  u.rayleigh.value = w > 0.7 ? 1.6 + (Math.min(w, 0.85) - 0.7) * 4 : w > 0.5 ? 1.6 : 3.2;
+  u.mieCoefficient.value = 0.004;
+  u.mieDirectionalG.value = 0.8;
+  const el = THREE.MathUtils.degToRad(skySunElevation(w));
+  u.sunPosition.value.set(Math.cos(el) * SKY_SUN_HX, Math.sin(el), Math.cos(el) * SKY_SUN_HZ);
+}
+
+let skyOn = false; // applyQuality가 켠다 (auto·high) — lite는 캔버스 하늘 그대로
+const sky = new Sky();
+sky.scale.setScalar(1200); // 카메라 far(1600) 안 — 플레이어를 따라다닌다
+sky.renderOrder = -12;     // 별(-11)·해(-10)·능선(-9)보다 먼저 그려져 맨 뒤가 된다
+sky.visible = false;
+setSkyUniforms(sky, 0.35);
+scene.add(sky);
+
+// 캔버스 하늘 돔: 밤에는 불투명(기존 밤하늘), 낮이 밝아질수록 걷혀 Sky가 드러난다
+const skyDome = new THREE.Mesh(
+  new THREE.SphereGeometry(590, 24, 12),
+  new THREE.MeshBasicMaterial({
+    map: skyTex, side: THREE.BackSide, transparent: true,
+    fog: false, depthWrite: false,
+  })
+);
+skyDome.renderOrder = -11.5; // Sky 위, 별 아래
+skyDome.visible = false;
+scene.add(skyDome);
+
+// 물 환경반사: 실패해도 게임은 계속 간다.
+// 시간대별(낮/어스름/밤) 하늘 환경맵 3장을 로드 시 1회만 프리베이크한다 — 프레임당 fromScene 금지.
+let roomEnv = null;
+let skyEnvs = null;
 try {
   const pmrem = new THREE.PMREMGenerator(renderer);
-  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  roomEnv = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  scene.environment = roomEnv; // lite 폴백 — applyQuality가 하늘 환경맵으로 바꾼다
+  const bakeSky = new Sky();
+  bakeSky.scale.setScalar(50); // fromScene의 큐브 카메라 far(100) 안에 들어오게
+  const bakeScene = new THREE.Scene();
+  bakeScene.add(bakeSky);
+  skyEnvs = {};
+  for (const [k, w] of [['day', 0.85], ['dusk', 0.5], ['night', 0.15]]) {
+    setSkyUniforms(bakeSky, w);
+    skyEnvs[k] = pmrem.fromScene(bakeScene, 0.04).texture;
+  }
+  bakeSky.geometry.dispose();
+  bakeSky.material.dispose();
   pmrem.dispose();
-} catch { /* 환경맵 없이 진행 */ }
+} catch { skyEnvs = null; /* 환경맵 없이 진행 */ }
+
+// duskW 구간이 바뀔 때만 환경맵 교체 — 히스테리시스 0.05로 경계에서의 깜빡임 방지
+let envBand = null;
+function updateEnvironment(w) {
+  if (!skyEnvs || !skyOn) return;
+  let b = envBand;
+  if (!b) b = w < 0.3 ? 'night' : w < 0.6 ? 'dusk' : 'day';
+  else if (b === 'night') { if (w > 0.35) b = w < 0.6 ? 'dusk' : 'day'; }
+  else if (b === 'day') { if (w < 0.55) b = w < 0.3 ? 'night' : 'dusk'; }
+  else if (w < 0.25) b = 'night';
+  else if (w > 0.65) b = 'day';
+  if (b !== envBand) {
+    envBand = b;
+    scene.environment = skyEnvs[b];
+  }
+}
 
 const colliders = []; // axis-aligned boxes {x0,x1,z0,z1}
 
@@ -442,6 +521,66 @@ function bakeShoreColors(geo, baseHex, offX, offZ, polys) {
 bakeShoreColors(lakeGeo, COLORS.lake, 0, -129, [LAKE]);
 bakeShoreColors(waterGeo, COLORS.sea, -90, -20, [MAIN_LAND]);
 
+/* ---------------- 호수 평면 반사 (Water addon · high 전용) ----------------
+   호수만 진짜 거울이 된다 — 하늘과 배가 물에 비친다. 바다는 반사 2패스
+   비용 때문에 기존 정점 파도를 유지한다. 리로드 없이 visible 스왑. */
+
+// 캔버스 노멀맵: 다층 사인 높이장(정수 주기 → 이음매 없음) → 중앙차분으로 노멀 인코딩
+function makeWaterNormals() {
+  const N = 256;
+  const h = new Float32Array(N * N);
+  const waves = [];
+  for (let i = 0; i < 7; i++) {
+    waves.push({
+      fx: 1 + Math.floor(Math.random() * 6), fy: 1 + Math.floor(Math.random() * 6),
+      p1: Math.random() * Math.PI * 2, p2: Math.random() * Math.PI * 2, amp: 1 / (i + 1),
+    });
+  }
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      let v = (Math.random() - 0.5) * 0.2; // 잔물결 노이즈
+      for (const w of waves) v += Math.sin((x / N) * Math.PI * 2 * w.fx + w.p1) * Math.sin((y / N) * Math.PI * 2 * w.fy + w.p2) * w.amp;
+      h[y * N + x] = v;
+    }
+  }
+  const [cv, ctx] = canvas2d(N, N);
+  const img = ctx.createImageData(N, N);
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const nx = (h[y * N + ((x - 1 + N) % N)] - h[y * N + ((x + 1) % N)]) * 1.1;
+      const ny = (h[((y - 1 + N) % N) * N + x] - h[((y + 1) % N) * N + x]) * 1.1;
+      const inv = 1 / Math.hypot(nx, ny, 1);
+      const o = (y * N + x) * 4;
+      img.data[o] = Math.round((nx * inv * 0.5 + 0.5) * 255);
+      img.data[o + 1] = Math.round((ny * inv * 0.5 + 0.5) * 255);
+      img.data[o + 2] = Math.round(inv * 255);
+      img.data[o + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+let reflWater = null; // high를 처음 고를 때 한 번만 만든다
+function buildLakeReflection() {
+  reflWater = new Water(new THREE.PlaneGeometry(64, 62), {
+    textureWidth: 512,
+    textureHeight: 512,
+    waterNormals: makeWaterNormals(),
+    sunDirection: new THREE.Vector3(70, 100, 45).normalize(), // sun의 고정 오프셋과 일치
+    sunColor: 0xffffff,
+    waterColor: COLORS.lake,
+    distortionScale: 1.8,
+    fog: scene.fog !== undefined,
+  });
+  reflWater.rotation.x = -Math.PI / 2;
+  // 호수 아래로도 이어지는 바다 평면의 파도 마루(최대 y≈-0.18)가 거울면을 뚫지 않도록 살짝 위에
+  reflWater.position.set(0, -0.14, -129); // 시각 전용, 판정 무관
+  scene.add(reflWater);
+}
+
 // 흙바닥 질감: 모래 알갱이와 옅은 얼룩 — 단색 평면이던 땅에 살결을 준다
 function makeGroundTexture(base) {
   const [cv, ctx] = canvas2d(256, 256);
@@ -469,13 +608,57 @@ function makeGroundTexture(base) {
   return tex;
 }
 
+// 모래 결 노멀맵: 낮은 사구 몇 겹 + 알갱이 — 빛이 스치면 땅의 살결이 드러난다
+function makeGroundNormal() {
+  const N = 128;
+  const h = new Float32Array(N * N);
+  const waves = [];
+  for (let i = 0; i < 5; i++) {
+    waves.push({
+      fx: 1 + Math.floor(Math.random() * 5), fy: 1 + Math.floor(Math.random() * 5),
+      p1: Math.random() * Math.PI * 2, p2: Math.random() * Math.PI * 2, amp: 0.5 / (i + 1),
+    });
+  }
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      let v = (Math.random() - 0.5) * 0.5; // 모래 알갱이
+      for (const w of waves) v += Math.sin((x / N) * Math.PI * 2 * w.fx + w.p1) * Math.sin((y / N) * Math.PI * 2 * w.fy + w.p2) * w.amp;
+      h[y * N + x] = v;
+    }
+  }
+  const [cv, ctx] = canvas2d(N, N);
+  const img = ctx.createImageData(N, N);
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const nx = (h[y * N + ((x - 1 + N) % N)] - h[y * N + ((x + 1) % N)]) * 0.9;
+      const ny = (h[((y - 1 + N) % N) * N + x] - h[((y + 1) % N) * N + x]) * 0.9;
+      const inv = 1 / Math.hypot(nx, ny, 1);
+      const o = (y * N + x) * 4;
+      img.data[o] = Math.round((nx * inv * 0.5 + 0.5) * 255);
+      img.data[o + 1] = Math.round((ny * inv * 0.5 + 0.5) * 255);
+      img.data[o + 2] = Math.round(inv * 255);
+      img.data[o + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(1 / 24, 1 / 24); // sandTex와 같은 타일링
+  return tex;
+}
+const groundNormalTex = makeGroundNormal();
+
 function extrudeLand(points, topColor, sideColor, { hole = null, depth = 2.2, topMap = null } = {}) {
   const shape = new THREE.Shape(points.map(([x, z]) => new THREE.Vector2(x, z)));
   if (hole) shape.holes.push(new THREE.Path(hole.map(([x, z]) => new THREE.Vector2(x, z))));
   const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false });
   geo.rotateX(Math.PI / 2);
   const topMat = topMap
-    ? new THREE.MeshLambertMaterial({ map: topMap, color: 0xfff8ea })
+    ? new THREE.MeshStandardMaterial({
+      map: topMap, color: 0xfff8ea, roughness: 1, metalness: 0,
+      normalMap: groundNormalTex, normalScale: new THREE.Vector2(0.55, 0.55),
+      envMapIntensity: 0.4, // 하늘 환경맵이 모래의 채도를 바래게 하지 않게
+    })
     : lambert(topColor);
   const mesh = new THREE.Mesh(geo, [topMat, lambert(sideColor)]);
   mesh.receiveShadow = true;
@@ -1196,18 +1379,26 @@ tower(0, 90, 8);
     col.castShadow = true;
     scene.add(col);
   }
-  const drum = new THREE.Mesh(new THREE.CylinderGeometry(6.5, 7, 6, 20), lambert(COLORS.limestoneShadow));
+  // 영웅 건물만 부드럽게 — 돔·드럼 세그먼트 상향 + PMREM에 반응하는 재질
+  const drum = new THREE.Mesh(
+    new THREE.CylinderGeometry(6.5, 7, 6, 32),
+    new THREE.MeshStandardMaterial({ color: COLORS.limestoneShadow, roughness: 0.7, envMapIntensity: 0.6 })
+  );
   drum.position.set(bx, 12, bz);
   drum.castShadow = true;
-  const domeMat = new THREE.MeshPhongMaterial({ color: COLORS.goldBright, emissive: 0x4a3a0c, shininess: 80 });
-  const dome = new THREE.Mesh(new THREE.SphereGeometry(6.8, 20, 14, 0, Math.PI * 2, 0, Math.PI / 1.9), domeMat);
+  const domeMat = new THREE.MeshStandardMaterial({
+    color: COLORS.goldBright, metalness: 0.85, roughness: 0.3, emissive: 0x4a3a0c,
+  });
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(6.8, 32, 20, 0, Math.PI * 2, 0, Math.PI / 1.9), domeMat);
   dome.position.set(bx, 15, bz);
   dome.castShadow = true;
   const lantern = new THREE.Mesh(new THREE.CylinderGeometry(1, 1.2, 2.4, 10), lambert(COLORS.limestone));
   lantern.position.set(bx, 21.5, bz);
-  const crossBeamV = new THREE.Mesh(new THREE.BoxGeometry(0.28, 2.2, 0.28), new THREE.MeshLambertMaterial({ color: COLORS.goldBright }));
+  // 금 십자가: 진짜 금속 반응 — 환경맵이 반짝임을 살린다
+  const crossMat = new THREE.MeshStandardMaterial({ color: COLORS.goldBright, metalness: 0.9, roughness: 0.25 });
+  const crossBeamV = new THREE.Mesh(new THREE.BoxGeometry(0.28, 2.2, 0.28), crossMat);
   crossBeamV.position.set(bx, 24, bz);
-  const crossBeamH = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.28, 0.28), new THREE.MeshLambertMaterial({ color: COLORS.goldBright }));
+  const crossBeamH = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.28, 0.28), crossMat);
   crossBeamH.position.set(bx, 24.6, bz);
   scene.add(facade, drum, dome, lantern, crossBeamV, crossBeamH);
   addCollider(bx, bz + 8, 20, 5);
@@ -1303,58 +1494,103 @@ const fires = firePositions.map(({ x, z }) => fireProp(x, z));
 
 /* ---------------- the man himself ---------------- */
 
+// 로브 회전 곡면: 어깨에서 허리로 좁아졌다 밑단으로 흘러 퍼지는 조각 실루엣.
+// 목둘레는 캡으로 닫는다 (위에서 내려다볼 때 빈 통이 아니게).
+function robeLatheGeo(shoulderR, waistR, hemR, height) {
+  const h2 = height / 2;
+  // 프로필은 y 오름차순 — 내림차순이면 와인딩이 뒤집혀 겉면이 컬링된다
+  const pts = new THREE.SplineCurve([
+    new THREE.Vector2(hemR, -h2),
+    new THREE.Vector2((waistR + hemR) / 2, -h2 * 0.55),
+    new THREE.Vector2(waistR, h2 * 0.05),
+    new THREE.Vector2(shoulderR * 1.04, h2 * 0.55),
+    new THREE.Vector2(shoulderR, h2),
+  ]).getPoints(14);
+  pts.push(new THREE.Vector2(0.02, h2));
+  return new THREE.LatheGeometry(pts, 24);
+}
+
 const player = new THREE.Group();
 {
-  const robe = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.78, 1.9, 10), lambert(COLORS.robe));
-  robe.position.y = 1.55;
+  // 성인 어부의 실루엣: 어깨가 가장 넓고 천이 곧게 떨어지다 밑단만 살짝 퍼진다.
+  // (V2의 hem 0.85는 데스크톱에서 원피스 입은 아이처럼 읽혀 0.68로 좁혔다)
+  const robe = new THREE.Mesh(
+    robeLatheGeo(0.42, 0.44, 0.68, 2.05),
+    // envMapIntensity를 낮춰 파치먼트 팔레트를 지킨다 — 밝은 하늘 환경맵이 색을 바래게 하지 않게
+    new THREE.MeshStandardMaterial({ color: COLORS.robe, roughness: 0.85, envMapIntensity: 0.5 })
+  );
+  robe.position.y = 1.52;
   robe.castShadow = true;
-  const sash = new THREE.Mesh(new THREE.TorusGeometry(0.56, 0.07, 6, 14), lambert(COLORS.woodDark));
+  const sash = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.07, 6, 14), lambert(COLORS.woodDark));
   sash.rotation.x = Math.PI / 2;
   sash.position.y = 1.35;
-  const cloak = new THREE.Mesh(new THREE.ConeGeometry(0.62, 1.3, 10, 1, true), new THREE.MeshLambertMaterial({ color: COLORS.cloak, side: THREE.DoubleSide }));
-  cloak.position.y = 1.85;
+  // 클록: 로브 겉에 걸친 덧옷 — 등은 부풀리고 앞은 눌러 로브 속으로 가라앉혀
+  // 앞에서는 어깨·옆선의 청록 띠로, 뒤에서는 통짜 망토로 읽힌다
+  const cloakGeo = (() => {
+    const pts = new THREE.SplineCurve([
+      new THREE.Vector2(0.66, -0.65),
+      new THREE.Vector2(0.58, -0.42),
+      new THREE.Vector2(0.53, -0.05),
+      new THREE.Vector2(0.47, 0.36),
+      new THREE.Vector2(0.1, 0.66),
+    ]).getPoints(14);
+    pts.push(new THREE.Vector2(0.02, 0.66));
+    const g = new THREE.LatheGeometry(pts, 24);
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const z = p.getZ(i);
+      p.setZ(i, z < 0 ? z * 1.22 : z * 0.78); // 등의 볼륨 / 앞섶은 로브 안으로
+    }
+    g.computeVertexNormals();
+    return g;
+  })();
+  const cloak = new THREE.Mesh(cloakGeo, new THREE.MeshStandardMaterial({ color: COLORS.cloak, roughness: 0.85, side: THREE.DoubleSide, envMapIntensity: 0.5 }));
+  cloak.position.y = 1.9;
   cloak.position.z = -0.05;
   cloak.castShadow = true;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.46, 12, 10), lambert(0xc99a72));
+  const head = new THREE.Mesh(
+    new THREE.SphereGeometry(0.415, 24, 20), // -10%: 얼굴이 몸을 잡아먹지 않게
+    new THREE.MeshStandardMaterial({ color: 0xc99a72, roughness: 0.6, envMapIntensity: 0.5 })
+  );
   head.position.y = 2.9;
   head.castShadow = true;
-  const beard = new THREE.Mesh(new THREE.SphereGeometry(0.34, 10, 8), lambert(0x4a4038));
-  beard.position.set(0, 2.62, 0.24);
-  beard.scale.set(1, 1.05, 0.75);
+  const beard = new THREE.Mesh(new THREE.SphereGeometry(0.29, 16, 12), lambert(0x4a4038)); // -15%
+  beard.position.set(0, 2.66, 0.22);
+  beard.scale.set(1, 1.15, 0.9); // 턱의 곡선을 따라 아래로 길게
   // 두건: 머리 뒤에서 어깨로 흘러내리는 반구 셸 — 뒷모습의 윤곽을 만든다
   const mantle = new THREE.Mesh(
-    new THREE.SphereGeometry(0.5, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2),
+    new THREE.SphereGeometry(0.46, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), // 작아진 머리에 맞춤
     new THREE.MeshLambertMaterial({ color: COLORS.mantle, side: THREE.DoubleSide })
   );
-  mantle.position.set(0, 2.6, -0.16);
+  mantle.position.set(0, 2.62, -0.15);
   mantle.rotation.x = -0.45; // 살짝 뒤로 기울여 목덜미를 덮는다
   mantle.scale.set(0.9, 1, 1); // 정면에서 귀처럼 삐져나오지 않게 좌우만 좁힌다
   mantle.castShadow = true;
-  // 클록 밑단 트림 + 등의 세로 여밈선 — 같은 색이라 한 메시로 합친다
-  const trimGeo = new THREE.TorusGeometry(0.62, 0.03, 6, 18);
+  // 클록 밑단 트림 + 등의 세로 여밈선 — 같은 색이라 한 메시로 합친다 (V3 곡면에 맞춰 재정렬)
+  const trimGeo = new THREE.TorusGeometry(0.6, 0.03, 6, 24);
   trimGeo.rotateX(Math.PI / 2);
-  trimGeo.translate(0, 1.22, -0.05);
-  const seamGeo = new THREE.BoxGeometry(0.035, 1.2, 0.07); // 도톰해야 콘 표면 위로 읽힌다
-  seamGeo.rotateX(0.45); // 콘의 경사를 따라 눕힌다
-  seamGeo.translate(0, 1.85, -0.37);
+  trimGeo.translate(0, 1.28, -0.08);
+  const seamGeo = new THREE.BoxGeometry(0.035, 1.05, 0.1); // 도톰해야 곡면 위로 읽힌다
+  seamGeo.rotateX(0.26); // 부풀린 등(z×1.22)의 완만한 경사를 따라 눕힌다
+  seamGeo.translate(0, 1.78, -0.7);
   const trim = new THREE.Mesh(mergeGeometries([trimGeo, seamGeo], false), lambert(COLORS.woodDark));
   trim.castShadow = true;
   // 머리채: 뒤통수의 어두운 캡 — 뒤에서 봐도 맨들한 공이 아니게
   const hair = new THREE.Mesh(
-    new THREE.SphereGeometry(0.48, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2),
+    new THREE.SphereGeometry(0.435, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), // 머리 -10%에 맞춤
     lambert(0x4a4038)
   );
   hair.position.set(0, 2.92, -0.03);
   hair.rotation.x = -Math.PI / 2 + 0.5; // 돔이 뒤통수와 정수리를 함께 덮도록
   // 눈: 얼굴이 돌 때의 생기 — 카드와 컷신을 위해 (두 알을 한 메시로)
   const eyeGeoL = new THREE.SphereGeometry(0.045, 6, 5);
-  eyeGeoL.translate(-0.16, 2.98, 0.41);
+  eyeGeoL.translate(-0.15, 2.97, 0.4); // 작아진 머리의 곡면 위로
   const eyeGeoR = eyeGeoL.clone();
-  eyeGeoR.translate(0.32, 0, 0);
+  eyeGeoR.translate(0.3, 0, 0);
   const eyes = new THREE.Mesh(mergeGeometries([eyeGeoL, eyeGeoR], false), lambert(COLORS.ink));
   player.add(robe, sash, cloak, head, beard, mantle, trim, hair, eyes);
 }
-const legGeo = new THREE.BoxGeometry(0.3, 0.95, 0.3);
+const legGeo = new THREE.CapsuleGeometry(0.15, 0.65, 4, 8); // 둥근 사지 — 박스에서 조각으로
 legGeo.translate(0, -0.45, 0);
 const legL = new THREE.Mesh(legGeo, lambert(0xc99a72));
 const legR = legL.clone();
@@ -1369,12 +1605,12 @@ const sandalR = sandalL.clone();
 legL.add(sandalL);
 legR.add(sandalR);
 // 팔: 어깨에서 걸음에 맞춰 다리와 반대로 흔들린다
-const armGeo = new THREE.BoxGeometry(0.22, 0.95, 0.22);
+const armGeo = new THREE.CapsuleGeometry(0.11, 0.73, 4, 8);
 armGeo.translate(0, -0.42, 0);
 const armL = new THREE.Mesh(armGeo, lambert(COLORS.robe));
 const armR = armL.clone();
-armL.position.set(-0.62, 2.35, 0);
-armR.position.set(0.62, 2.35, 0);
+armL.position.set(-0.52, 2.38, 0); // V3 로브의 곧은 어깨선에 붙인다
+armR.position.set(0.52, 2.38, 0);
 armL.castShadow = armR.castShadow = true;
 player.add(armL, armR);
 // 손: 팔 끝의 살구색 구 — armL/armR의 자식이라 팔의 회전을 자동 추종
@@ -1444,7 +1680,7 @@ voyageBoat.visible = false;
 const ghostJohn = new THREE.Group();
 {
   const gm = () => new THREE.MeshBasicMaterial({ color: 0xdfeaf2, transparent: true, opacity: 0.5, depthWrite: false });
-  const robe = new THREE.Mesh(new THREE.ConeGeometry(0.62, 2, 10), gm());
+  const robe = new THREE.Mesh(robeLatheGeo(0.27, 0.36, 0.64, 2), gm());
   robe.position.y = 1;
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 10), gm());
   head.position.y = 2.5;
@@ -1497,7 +1733,7 @@ let shepherdG = null;
   }
   // 목자: 지팡이를 든 형상
   const shep = new THREE.Group();
-  const robe = new THREE.Mesh(new THREE.ConeGeometry(0.6, 2, 9), lambert(0x6a5a44));
+  const robe = new THREE.Mesh(robeLatheGeo(0.26, 0.34, 0.62, 2), lambert(0x6a5a44));
   robe.position.y = 1;
   robe.castShadow = true;
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.4, 10, 8), lambert(0xc99a72));
@@ -1637,6 +1873,16 @@ const ridgeTex = (() => {
   c.lineTo(512, 128);
   c.closePath();
   c.fill();
+  // 좌우 끝을 투명으로 흘려보낸다 — 물리 하늘(G5) 위에서 스프라이트의 수직 절단선이 드러나지 않게
+  c.globalCompositeOperation = 'destination-out';
+  for (const [x0, x1] of [[0, 40], [512, 472]]) {
+    const g = c.createLinearGradient(x0, 0, x1, 0);
+    g.addColorStop(0, 'rgba(0,0,0,1)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = g;
+    c.fillRect(Math.min(x0, x1), 0, 40, 128);
+  }
+  c.globalCompositeOperation = 'source-over';
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
@@ -1780,6 +2026,13 @@ function applyWarmth(w) {
   lerp3(sun.color, SUN_NIGHT, SUN_DAY, SUN_DUSK, w);
   sun.intensity = 1.1 + 1.5 * Math.sin(Math.min(1, w) * Math.PI * 0.85);
   hemi.intensity = 0.55 + 0.7 * w;
+  // 물리 하늘: 밤(w<0.3)엔 숨고 캔버스 하늘이 밤을 맡는다 — 그 경계는 돔이 크로스페이드
+  if (skyOn) {
+    sky.visible = w >= 0.3;
+    if (sky.visible) setSkyUniforms(sky, w);
+    updateEnvironment(w);
+  }
+  if (reflWater) reflWater.material.uniforms.sunColor.value.copy(sun.color);
 }
 applyWarmth(0.35);
 
@@ -2086,11 +2339,29 @@ document.getElementById('pause-resume').addEventListener('click', togglePause);
 pauseBtn.addEventListener('click', () => { if (!paused) togglePause(); });
 pauseSoundBtn.addEventListener('click', toggleMute);
 
-// 화질: 자동(측정에 맡김) → 풍성하게(포스트 켬) → 가볍게(포스트 끔)
+// 화질: 자동(측정에 맡김) → 풍성하게(포스트+반사 켬) → 가볍게(전부 끔)
 function applyQuality(q) {
   if (q === 'high') { usePost = true; fpsGate.done = true; }
   else if (q === 'lite') { usePost = false; fpsGate.done = true; }
-  // 'auto'는 세션 중엔 현재 상태 유지 — 재부팅하면 FPS 게이트가 다시 판단한다
+  // 'auto'의 포스트는 세션 중엔 현재 상태 유지 — 재부팅하면 FPS 게이트가 다시 판단한다
+  // 물리 하늘 + 시간대별 환경맵: auto·high — lite는 캔버스 하늘 + RoomEnvironment 그대로
+  skyOn = q !== 'lite' && !!skyEnvs;
+  skyDome.visible = skyOn;
+  if (skyOn) {
+    sky.visible = duskW >= 0.3;
+    setSkyUniforms(sky, duskW);
+    envBand = null; // 현재 시간대로 즉시 재선택
+    updateEnvironment(duskW);
+  } else {
+    sky.visible = false;
+    if (roomEnv) scene.environment = roomEnv;
+    envBand = null;
+  }
+  // 호수 평면 반사: high 전용 — 리로드 없이 visible 스왑
+  const refl = q === 'high';
+  if (refl && !reflWater) { try { buildLakeReflection(); } catch { /* 반사 없이 진행 */ } }
+  if (reflWater) reflWater.visible = refl;
+  lakeWater.visible = !(refl && reflWater);
 }
 applyQuality(save.quality); // 지난 세션의 선택을 이어받는다
 pauseQualityBtn.addEventListener('click', () => {
@@ -4153,7 +4424,15 @@ function animate() {
     fpsGate.frames++;
     if (fpsGate.time >= 4) {
       fpsGate.done = true;
-      if (fpsGate.frames / fpsGate.time < 45) usePost = false;
+      if (fpsGate.frames / fpsGate.time < 45) {
+        usePost = false;
+        // 약한 기기: 물리 하늘도 함께 내려놓는다 — 캔버스 하늘 + RoomEnvironment로
+        skyOn = false;
+        skyDome.visible = false;
+        sky.visible = false;
+        if (roomEnv) scene.environment = roomEnv;
+        envBand = null;
+      }
     }
   }
 
@@ -4327,8 +4606,17 @@ function animate() {
   const chartUp = state.view === 'chart';
   const dayK = Math.max(0, Math.min(1, (duskW - 0.35) / 0.4));   // 낮의 정도
   const nightK = Math.max(0, Math.min(1, (0.4 - duskW) / 0.3));  // 밤의 정도
+  // 물리 하늘과 캔버스 돔은 하늘 요소처럼 플레이어를 따라다닌다.
+  // 돔은 낮이 밝을수록 걷힌다 — Sky가 숨는 경계(0.3)에선 완전 불투명이라 전환이 튀지 않는다.
+  const skyLive = skyOn && sky.visible;
+  sky.position.copy(player.position);
+  skyDome.position.copy(player.position);
+  const domeGoal = skyOn ? Math.max(0, Math.min(1, (0.45 - duskW) / 0.15)) : 0;
+  skyDome.material.opacity += (domeGoal - skyDome.material.opacity) * Math.min(1, dt * 3);
+  if (reflWater && reflWater.visible) reflWater.material.uniforms.time.value += dt * 0.5;
+  const skyDiscK = skyLive ? 0.5 : 1; // 낮에는 Sky의 해 원반이 주인공 — 스프라이트는 절반으로
   sunSprite.position.copy(player.position).addScaledVector(SUN_DIR, 820);
-  sunSprite.material.opacity += ((chartUp ? 0 : 0.95 * dayK) - sunSprite.material.opacity) * Math.min(1, dt * 3);
+  sunSprite.material.opacity += ((chartUp ? 0 : 0.95 * dayK * skyDiscK) - sunSprite.material.opacity) * Math.min(1, dt * 3);
   moonSprite.position.copy(player.position).addScaledVector(MOON_DIR, 780);
   moonSprite.material.opacity += ((chartUp ? 0 : 0.9 * nightK) - moonSprite.material.opacity) * Math.min(1, dt * 3);
   stars.position.copy(player.position);
@@ -4350,7 +4638,7 @@ function animate() {
   ridgeMat.opacity += ((chartUp ? 0 : 0.5 - 0.25 * dayK) - ridgeMat.opacity) * Math.min(1, dt * 2);
   ridgeMat.color.lerpColors(RIDGE_NIGHT, RIDGE_DAY, dayK);
   sunHalo.position.copy(player.position).addScaledVector(SUN_DIR, 860);
-  sunHalo.material.opacity += ((chartUp ? 0 : 0.35 * dayK) - sunHalo.material.opacity) * Math.min(1, dt * 3);
+  sunHalo.material.opacity += ((chartUp ? 0 : 0.35 * dayK * skyDiscK) - sunHalo.material.opacity) * Math.min(1, dt * 3);
 
   // 발의 등불: 예루살렘의 밤길(z > 60)에서만 — 갈릴리의 긴 밤과 로마는 켜지 않는다
   const lampTarget = (duskW < 0.35 && player.position.z > 60
@@ -4532,12 +4820,14 @@ function animate() {
   }
 
   // water: a lake ripple and a heavier sea swell
-  const lPos = lakeGeo.attributes.position;
-  for (let i = 0; i < lPos.count; i++) {
-    const x = lakeBase[i * 3], z = lakeBase[i * 3 + 2];
-    lPos.array[i * 3 + 1] = Math.sin(x * 0.2 + t * 1.1) * Math.cos(z * 0.17 + t * 0.9) * 0.12;
+  if (lakeWater.visible) { // high 모드에선 반사 수면이 대신하므로 잔물결 계산을 쉰다
+    const lPos = lakeGeo.attributes.position;
+    for (let i = 0; i < lPos.count; i++) {
+      const x = lakeBase[i * 3], z = lakeBase[i * 3 + 2];
+      lPos.array[i * 3 + 1] = Math.sin(x * 0.2 + t * 1.1) * Math.cos(z * 0.17 + t * 0.9) * 0.12;
+    }
+    lPos.needsUpdate = true;
   }
-  lPos.needsUpdate = true;
   const sPos = waterGeo.attributes.position;
   for (let i = 0; i < sPos.count; i++) {
     const x = waterBase[i * 3], z = waterBase[i * 3 + 2];
