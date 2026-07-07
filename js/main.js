@@ -4795,9 +4795,13 @@ function animate() {
       // 'done'의 색은 settlePin / 기록 FX가 관리한다
     }
     const waiting = m.styleState === 'wait';
-    const sScale = spriteScale * (waiting ? 0.78 : 1);
+    // 가까이 다가서면 표지가 몸을 낮춘다 — 발치의 고리·이름표·방문 버튼이 그 몫을 잇는다
+    // (다 큰 핀이 코앞에서 화면을 가리는 것 방지; 새의 눈 지도에선 늘 온몸)
+    const dPin = Math.hypot(player.position.x - m.g.position.x, player.position.z - m.g.position.z);
+    const closeK = chartView ? 1 : THREE.MathUtils.smoothstep(dPin, 5, 14);
+    const sScale = spriteScale * (waiting ? 0.78 : 1) * Math.max(chartView ? 1 : 0.0001, closeK);
     m.sprite.scale.set(sScale, sScale, 1);
-    m.pin.scale.setScalar((chartView ? 2.8 : 1) * (m.fxScale || 1));
+    m.pin.scale.setScalar((chartView ? 2.8 : 1) * (m.fxScale || 1) * Math.max(0.0001, closeK));
     if (m.styleState === 'target') {
       const bob = Math.sin(t * 2 + m.phase) * 0.4;
       m.pin.position.y = bob + 0.2;
