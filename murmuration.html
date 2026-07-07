@@ -1,0 +1,399 @@
+<title>황혼의 군무 — Murmuration</title>
+<style>
+  body { margin: 0; background: #0a0b1e; overflow: hidden; }
+  #c { display: block; width: 100vw; height: 100vh; cursor: crosshair; }
+  #plate {
+    position: fixed; left: 28px; bottom: 26px;
+    color: rgba(240, 228, 210, 0.9);
+    font-family: 'Iowan Old Style', 'Palatino Nova', Palatino, Georgia, serif;
+    pointer-events: none; user-select: none;
+    animation: settle 4s ease 9s forwards;
+  }
+  #plate h1 {
+    margin: 0 0 6px; font-size: 21px; font-weight: 500;
+    letter-spacing: 0.04em; text-wrap: balance;
+  }
+  #plate p {
+    margin: 0; font-size: 12.5px; line-height: 1.7;
+    color: rgba(240, 228, 210, 0.62); letter-spacing: 0.02em;
+  }
+  #plate .hint { font-size: 11px; color: rgba(240, 228, 210, 0.42); margin-top: 8px; }
+  @keyframes settle { to { opacity: 0.22; } }
+  @media (prefers-reduced-motion: reduce) { #plate { animation: none; } }
+</style>
+
+<canvas id="c"></canvas>
+<div id="plate">
+  <h1>황혼의 군무</h1>
+  <p>a murmuration — 세 가지 단순한 규칙, 천 마리의 새, 하나의 살아있는 형상</p>
+  <p class="hint">커서로 새 떼를 가르고 · 클릭하면 바람 한 줄기 · 가끔 매가 지나갑니다</p>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var cv = document.getElementById('c');
+  var ctx = cv.getContext('2d');
+  var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var TIME_SCALE = reduced ? 0.35 : 1;
+
+  var W = 0, H = 0, DPR = 1, WL = 0; // WL = waterline y
+  var vignette = null;
+
+  function resize() {
+    DPR = Math.min(2, window.devicePixelRatio || 1);
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+    cv.style.width = W + 'px'; cv.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    WL = H * 0.78;
+    var v = ctx.createRadialGradient(W / 2, H * 0.45, H * 0.2, W / 2, H * 0.45, Math.max(W, H) * 0.75);
+    v.addColorStop(0, 'rgba(0,0,0,0)');
+    v.addColorStop(1, 'rgba(4,4,12,0.42)');
+    vignette = v;
+    rebuildGrid();
+    for (var i = 0; i < N; i++) {
+      var b = boids[i];
+      if (b.x > W) b.x = W - 10; if (b.y > WL - 40) b.y = WL - 60;
+    }
+  }
+
+  // ---------- flock ----------
+  var N = Math.max(350, Math.min(1500, Math.round(window.innerWidth * window.innerHeight / 1100)));
+  var boids = [];
+  for (var i = 0; i < N; i++) {
+    var a = Math.random() * Math.PI * 2;
+    boids.push({
+      x: Math.random() * window.innerWidth,
+      y: window.innerHeight * (0.15 + Math.random() * 0.5),
+      vx: Math.cos(a) * 90, vy: Math.sin(a) * 90,
+      z: 0.35 + Math.random() * 0.65   // pseudo-depth: size, speed, alpha
+    });
+  }
+
+  // spatial hash (linked lists in typed arrays)
+  var CELL = 48, cols = 1, rows = 1, head = null;
+  var next = new Int32Array(N);
+  function rebuildGrid() {
+    cols = Math.max(1, Math.ceil(W / CELL));
+    rows = Math.max(1, Math.ceil(H / CELL));
+    head = new Int32Array(cols * rows);
+  }
+
+  var PR = 44, PR2 = PR * PR;        // perception radius
+  var SR = 19, SR2 = SR * SR;        // separation radius
+  var MAX_NEIGHBORS = 13;
+
+  // ---------- presence: cursor, gust, falcon ----------
+  var mx = -9999, my = -9999;
+  var gustX = 0, gustY = 0, gustT = -99;
+  window.addEventListener('pointermove', function (e) { mx = e.clientX; my = e.clientY; }, { passive: true });
+  window.addEventListener('pointerleave', function () { mx = -9999; my = -9999; });
+  window.addEventListener('pointerdown', function (e) {
+    gustX = e.clientX; gustY = e.clientY; gustT = tNow;
+    mx = e.clientX; my = e.clientY;
+  });
+
+  var falcon = { active: false, x: 0, y: 0, vx: 0, vy: 0, nextAt: 12 + Math.random() * 10 };
+  function launchFalcon() {
+    // aim at flock centroid, enter from a random side edge above the water
+    var cx = 0, cy = 0;
+    for (var i = 0; i < N; i++) { cx += boids[i].x; cy += boids[i].y; }
+    cx /= N; cy /= N;
+    var fromLeft = Math.random() < 0.5;
+    falcon.x = fromLeft ? -60 : W + 60;
+    falcon.y = Math.max(30, cy - H * (0.15 + Math.random() * 0.25));
+    var dx = cx - falcon.x, dy = cy - falcon.y;
+    var d = Math.hypot(dx, dy) || 1;
+    var spd = 430;
+    falcon.vx = dx / d * spd; falcon.vy = dy / d * spd;
+    falcon.active = true;
+  }
+
+  // ---------- palette ----------
+  function lerpC(a, b, t) {
+    return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+  }
+  function css(c, a) {
+    return 'rgba(' + (c[0] | 0) + ',' + (c[1] | 0) + ',' + (c[2] | 0) + ',' + (a === undefined ? 1 : a) + ')';
+  }
+  var DUSK = { top: [44, 34, 78], mid: [112, 72, 100], low: [204, 122, 72], hz: [236, 164, 94] };
+  var NIGHT = { top: [7, 10, 28], mid: [17, 22, 45], low: [28, 32, 60], hz: [70, 56, 66] };
+  var WATER_DUSK = { top: [92, 54, 46], bot: [22, 18, 32] };
+  var WATER_NIGHT = { top: [24, 27, 46], bot: [6, 8, 17] };
+
+  // stars — fixed field, fade in with night
+  var stars = [];
+  for (var s = 0; s < 150; s++) {
+    stars.push({ x: Math.random(), y: Math.random() * 0.72, r: 0.4 + Math.random() * 0.9, ph: Math.random() * Math.PI * 2 });
+  }
+
+  // ---------- simulation ----------
+  var tNow = 0, last = performance.now();
+  var CYCLE = 240; // seconds: golden dusk → night → back
+
+  function step(dt) {
+    // grid
+    head.fill(-1);
+    for (var i = 0; i < N; i++) {
+      var b = boids[i];
+      var cxi = Math.min(cols - 1, Math.max(0, (b.x / CELL) | 0));
+      var cyi = Math.min(rows - 1, Math.max(0, (b.y / CELL) | 0));
+      var ci = cyi * cols + cxi;
+      next[i] = head[ci]; head[ci] = i;
+    }
+
+    var gustAge = tNow - gustT;
+    var gustLive = gustAge >= 0 && gustAge < 0.7;
+    var gustK = gustLive ? (1 - gustAge / 0.7) : 0;
+
+    for (i = 0; i < N; i++) {
+      b = boids[i];
+      var ax = 0, ay = 0;
+      var sumVX = 0, sumVY = 0, sumX = 0, sumY = 0, sepX = 0, sepY = 0;
+      var count = 0, sepCount = 0;
+
+      var gx = Math.min(cols - 1, Math.max(0, (b.x / CELL) | 0));
+      var gy = Math.min(rows - 1, Math.max(0, (b.y / CELL) | 0));
+      for (var oy = -1; oy <= 1 && count < MAX_NEIGHBORS; oy++) {
+        var yy = gy + oy; if (yy < 0 || yy >= rows) continue;
+        for (var ox = -1; ox <= 1 && count < MAX_NEIGHBORS; ox++) {
+          var xx = gx + ox; if (xx < 0 || xx >= cols) continue;
+          var j = head[yy * cols + xx];
+          while (j !== -1 && count < MAX_NEIGHBORS) {
+            if (j !== i) {
+              var o = boids[j];
+              var dx = o.x - b.x, dy = o.y - b.y;
+              var d2 = dx * dx + dy * dy;
+              if (d2 < PR2) {
+                sumVX += o.vx; sumVY += o.vy;
+                sumX += o.x; sumY += o.y;
+                count++;
+                if (d2 < SR2 && d2 > 0.01) {
+                  sepX -= dx / d2; sepY -= dy / d2;
+                  sepCount++;
+                }
+              }
+            }
+            j = next[j];
+          }
+        }
+      }
+
+      var spd = Math.hypot(b.vx, b.vy) || 1;
+      var maxSpd = 140 + 75 * b.z;
+
+      if (count > 0) {
+        // alignment
+        var m = Math.hypot(sumVX, sumVY) || 1;
+        ax += (sumVX / m * maxSpd - b.vx) * 1.0;
+        ay += (sumVY / m * maxSpd - b.vy) * 1.0;
+        // cohesion
+        var tx = sumX / count - b.x, ty = sumY / count - b.y;
+        m = Math.hypot(tx, ty) || 1;
+        ax += (tx / m * maxSpd - b.vx) * 0.55;
+        ay += (ty / m * maxSpd - b.vy) * 0.55;
+      }
+      if (sepCount > 0) {
+        m = Math.hypot(sepX, sepY) || 1;
+        ax += (sepX / m * maxSpd - b.vx) * 1.7;
+        ay += (sepY / m * maxSpd - b.vy) * 1.7;
+      }
+
+      // soft bounds — sky box above the water
+      var M = 80, K = 7;
+      if (b.x < M) ax += (M - b.x) * K;
+      if (b.x > W - M) ax -= (b.x - (W - M)) * K;
+      if (b.y < 50) ay += (50 - b.y) * K;
+      var floor = WL - 44;
+      if (b.y > floor) ay -= (b.y - floor) * K * 1.8;
+
+      // cursor as presence
+      var pdx = b.x - mx, pdy = b.y - my;
+      var pd2 = pdx * pdx + pdy * pdy;
+      if (pd2 < 115 * 115 && pd2 > 1) {
+        var pd = Math.sqrt(pd2);
+        var f = (1 - pd / 115) * 950;
+        ax += pdx / pd * f; ay += pdy / pd * f;
+      }
+
+      // gust on click
+      if (gustLive) {
+        pdx = b.x - gustX; pdy = b.y - gustY;
+        pd2 = pdx * pdx + pdy * pdy;
+        if (pd2 < 240 * 240 && pd2 > 1) {
+          pd = Math.sqrt(pd2);
+          f = (1 - pd / 240) * 2600 * gustK;
+          ax += pdx / pd * f; ay += pdy / pd * f;
+        }
+      }
+
+      // falcon fear
+      if (falcon.active) {
+        pdx = b.x - falcon.x; pdy = b.y - falcon.y;
+        pd2 = pdx * pdx + pdy * pdy;
+        if (pd2 < 155 * 155 && pd2 > 1) {
+          pd = Math.sqrt(pd2);
+          f = (1 - pd / 155) * 1500;
+          ax += pdx / pd * f; ay += pdy / pd * f;
+        }
+      }
+
+      // a breath of noise
+      ax += (Math.random() - 0.5) * 70;
+      ay += (Math.random() - 0.5) * 70;
+
+      b.vx += ax * dt; b.vy += ay * dt;
+      spd = Math.hypot(b.vx, b.vy) || 1;
+      if (spd > maxSpd) { b.vx = b.vx / spd * maxSpd; b.vy = b.vy / spd * maxSpd; }
+      else if (spd < 55) { b.vx = b.vx / spd * 55; b.vy = b.vy / spd * 55; }
+      b.x += b.vx * dt; b.y += b.vy * dt;
+    }
+
+    // falcon
+    if (!reduced) {
+      if (falcon.active) {
+        falcon.x += falcon.vx * dt; falcon.y += falcon.vy * dt;
+        if (falcon.x < -120 || falcon.x > W + 120 || falcon.y < -120 || falcon.y > H + 120) {
+          falcon.active = false;
+          falcon.nextAt = tNow + 15 + Math.random() * 22;
+        }
+      } else if (tNow > falcon.nextAt) {
+        launchFalcon();
+      }
+    }
+  }
+
+  // ---------- render ----------
+  function render() {
+    var p = 0.5 - 0.5 * Math.cos(tNow * Math.PI * 2 / CYCLE); // 0 = golden dusk, 1 = night
+    var skyTop = lerpC(DUSK.top, NIGHT.top, p);
+    var skyMid = lerpC(DUSK.mid, NIGHT.mid, p);
+    var skyLow = lerpC(DUSK.low, NIGHT.low, p);
+    var hz = lerpC(DUSK.hz, NIGHT.hz, p);
+
+    // sky
+    var g = ctx.createLinearGradient(0, 0, 0, WL);
+    g.addColorStop(0, css(skyTop));
+    g.addColorStop(0.55, css(skyMid));
+    g.addColorStop(0.88, css(skyLow));
+    g.addColorStop(1, css(hz));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, WL);
+
+    // afterglow of the set sun
+    var glowA = (1 - p) * 0.5;
+    if (glowA > 0.01) {
+      var sx = W * 0.66;
+      var rg = ctx.createRadialGradient(sx, WL, 0, sx, WL, H * 0.55);
+      rg.addColorStop(0, 'rgba(255,190,120,' + glowA + ')');
+      rg.addColorStop(1, 'rgba(255,190,120,0)');
+      ctx.fillStyle = rg;
+      ctx.fillRect(0, 0, W, WL);
+    }
+
+    // stars
+    var night = Math.max(0, (p - 0.5) / 0.45);
+    if (night > 0.02) {
+      for (var s = 0; s < stars.length; s++) {
+        var st = stars[s];
+        var tw = 0.6 + 0.4 * Math.sin(tNow * 1.7 + st.ph);
+        ctx.fillStyle = 'rgba(230,232,245,' + (night * tw * 0.85).toFixed(3) + ')';
+        ctx.fillRect(st.x * W, st.y * WL, st.r, st.r);
+      }
+      // a thin moon
+      var mxp = W * 0.2, myp = H * 0.17, mr = 17;
+      ctx.globalAlpha = night * 0.9;
+      ctx.fillStyle = '#e8e3d4';
+      ctx.beginPath(); ctx.arc(mxp, myp, mr, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = css(skyTop);
+      ctx.beginPath(); ctx.arc(mxp - mr * 0.42, myp - mr * 0.18, mr * 0.92, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // water
+    var wTop = lerpC(WATER_DUSK.top, WATER_NIGHT.top, p);
+    var wBot = lerpC(WATER_DUSK.bot, WATER_NIGHT.bot, p);
+    g = ctx.createLinearGradient(0, WL, 0, H);
+    g.addColorStop(0, css(wTop));
+    g.addColorStop(1, css(wBot));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, WL, W, H - WL);
+
+    // light lanes on the water from the afterglow
+    if (glowA > 0.01) {
+      sx = W * 0.66;
+      for (var k = 0; k < 7; k++) {
+        var ly = WL + 6 + k * k * 2.6;
+        var lw = W * (0.16 - k * 0.014);
+        var wob = Math.sin(tNow * 1.3 + k * 2.1) * 8;
+        ctx.fillStyle = 'rgba(255,178,110,' + (glowA * (0.24 - k * 0.028)).toFixed(3) + ')';
+        ctx.fillRect(sx - lw / 2 + wob, ly, lw, 1.6);
+      }
+    }
+
+    // reflections — squashed, dim, wobbling
+    var ra = 0.16 - p * 0.06;
+    ctx.fillStyle = 'rgba(10,8,16,' + ra.toFixed(3) + ')';
+    for (var i = 0; i < N; i++) {
+      var b = boids[i];
+      var ry = WL + (WL - b.y) * 0.35;
+      if (ry < H) {
+        var wobx = Math.sin(tNow * 2 + b.y * 0.05) * 1.5;
+        ctx.fillRect(b.x + wobx, ry, 2.2 * b.z + 0.8, 1);
+      }
+    }
+
+    // birds — batched by depth into three strokes
+    var paths = [new Path2D(), new Path2D(), new Path2D()];
+    for (i = 0; i < N; i++) {
+      b = boids[i];
+      var spd = Math.hypot(b.vx, b.vy) || 1;
+      var L = 3 + 4.5 * b.z;
+      var ux = b.vx / spd * L, uy = b.vy / spd * L;
+      var bi = b.z < 0.55 ? 0 : (b.z < 0.8 ? 1 : 2);
+      paths[bi].moveTo(b.x - ux, b.y - uy);
+      paths[bi].lineTo(b.x, b.y);
+    }
+    ctx.lineCap = 'round';
+    var inks = ['rgba(14,10,20,0.5)', 'rgba(14,10,20,0.72)', 'rgba(12,8,18,0.92)'];
+    var widths = [1, 1.45, 1.9];
+    for (k = 0; k < 3; k++) {
+      ctx.strokeStyle = inks[k];
+      ctx.lineWidth = widths[k];
+      ctx.stroke(paths[k]);
+    }
+
+    // falcon — a heavier chevron
+    if (falcon.active) {
+      spd = Math.hypot(falcon.vx, falcon.vy) || 1;
+      ux = falcon.vx / spd; uy = falcon.vy / spd;
+      var px = -uy, py = ux;
+      ctx.strokeStyle = 'rgba(8,5,12,0.95)';
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      ctx.moveTo(falcon.x - ux * 10 + px * 7, falcon.y - uy * 10 + py * 7);
+      ctx.lineTo(falcon.x, falcon.y);
+      ctx.lineTo(falcon.x - ux * 10 - px * 7, falcon.y - uy * 10 - py * 7);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  function frame(now) {
+    var dt = Math.min(0.045, (now - last) / 1000) * TIME_SCALE;
+    last = now;
+    tNow += dt;
+    step(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  window.addEventListener('resize', resize);
+  resize();
+  requestAnimationFrame(frame);
+})();
+</script>
