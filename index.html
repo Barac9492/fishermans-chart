@@ -117,6 +117,18 @@
         <summary>함께 나눠요</summary>
         <p id="card-question"></p>
       </details>
+      <!-- 말씀 새기기 (Seal-to-Chart) 영역 -->
+      <div id="card-seal-box" class="card-seal-box hidden">
+        <p class="seal-head">말씀을 새기라</p>
+        <div id="seal-verse-box" class="verse">
+          <p id="seal-verse"></p>
+        </div>
+        <div class="seal-input-row">
+          <input type="text" id="seal-input" placeholder="빈칸 단어 입력" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+          <button id="seal-submit">새겨넣기</button>
+        </div>
+        <p id="seal-msg" class="seal-msg"></p>
+      </div>
       <button id="card-close">계속 걷기</button>
     </div>
   </div>
@@ -149,18 +161,7 @@
     </div>
   </div>
 
-  <!-- 말씀 새기기 — 부르심·고백·부인·회복, 손으로 옮겨 적어야 다음으로 간다 -->
-  <div id="verse-gate" class="overlay hidden">
-    <div class="card-inner verse-gate-inner">
-      <h2>말씀을 옮겨 적어요</h2>
-      <p id="verse-gate-ref" class="dates"></p>
-      <div id="verse-gate-quote" class="verse verse-gate-quote"></div>
-      <textarea id="verse-gate-input" rows="4" placeholder="위 말씀을 손으로 옮겨 적어 보세요"
-        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
-      <p id="verse-gate-msg" class="verse-gate-msg"></p>
-      <button id="verse-gate-submit">새겨넣기</button>
-    </div>
-  </div>
+
 
   <!-- 일시정지 — 잠시 쉬어가기 -->
   <div id="pause" class="overlay hidden">

@@ -624,43 +624,111 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
 .record-inner { max-width: 480px; }
 .record-inner h2 { font-family: 'Nanum Myeongjo', serif; font-weight: 800; letter-spacing: 0.04em; }
 
-/* ---------- 말씀 새기기 ---------- */
-.verse-gate-inner { max-width: 520px; }
-.verse-gate-quote {
+/* ---------- 말씀 새기기 (Seal-to-Chart) ---------- */
+.card-seal-box {
+  margin-top: 20px;
+  border: 1.5px solid var(--gold);
+  border-radius: 4px;
+  background: rgba(184, 144, 46, 0.04);
+  padding: 16px 20px;
   text-align: left;
-  user-select: none;
-  -webkit-user-select: none;
+  animation: fadein 0.3s ease;
 }
-.verse-gate-quote p { margin: 0 0 6px; }
-.verse-gate-quote p:last-child { margin-bottom: 0; }
-.verse-gate-quote b { margin-right: 6px; color: var(--red); font-weight: 700; font-style: normal; }
-
-#verse-gate-input {
-  display: block;
-  width: 100%;
-  margin: 16px 0 0;
-  padding: 12px 14px;
-  font-family: 'Noto Serif KR', Georgia, serif;
-  font-size: clamp(15px, 2.6vw, 17px);
-  line-height: 1.6;
+.seal-head {
+  font-family: 'Nanum Myeongjo', serif;
+  font-weight: 800;
+  color: #8a6a1e;
+  font-size: 15px;
+  margin: 0 0 10px;
+  text-align: center;
+  letter-spacing: 0.1em;
+}
+.seal-head::before {
+  content: '🖋️ ';
+}
+#seal-verse-box {
+  margin: 0 0 12px;
+  border-left: 3px solid var(--gold);
+  background: rgba(184, 144, 46, 0.07);
+  padding: 10px 14px;
+  font-size: clamp(14px, 2.5vw, 16.5px);
+  line-height: 1.58;
   color: var(--ink);
-  background: #fff;
+}
+.seal-blank {
+  display: inline-block;
+  min-width: 60px;
+  text-align: center;
+  border-bottom: 2px solid var(--red);
+  color: var(--red);
+  font-weight: 700;
+  margin: 0 4px;
+  padding: 0 2px;
+  transition: color 0.4s ease, border-color 0.4s ease;
+}
+.seal-blank.solved {
+  color: var(--gold);
+  border-bottom-color: var(--gold);
+  font-weight: 800;
+  text-shadow: 0 0 4px rgba(184, 144, 46, 0.2);
+}
+.seal-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+#seal-input {
+  flex: 1;
+  min-height: 44px;
+  padding: 0 12px;
+  font-family: 'Noto Serif KR', Georgia, serif;
+  font-size: 15px;
   border: 1.5px solid var(--ink);
   border-radius: 3px;
-  resize: vertical;
+  background: #fff;
+  color: var(--ink);
+  box-sizing: border-box;
 }
-#verse-gate-input:focus { outline: 2px solid var(--gold); outline-offset: 1px; }
-#verse-gate-input.shake { animation: verse-shake 0.4s ease; }
-@keyframes verse-shake {
+#seal-input:focus {
+  outline: 2px solid var(--gold);
+  outline-offset: 1px;
+}
+#seal-input:disabled {
+  background: rgba(43, 38, 32, 0.06);
+  color: var(--ink-soft);
+  border-color: rgba(90, 81, 66, 0.3);
+}
+#seal-submit {
+  min-height: 44px;
+  margin: 0;
+  font-size: 15px;
+  padding: 0 18px;
+  box-sizing: border-box;
+}
+#seal-submit:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+#seal-input.shake {
+  animation: seal-shake 0.4s ease;
+}
+@keyframes seal-shake {
   0%, 100% { transform: translateX(0); }
   20% { transform: translateX(-6px); }
   40% { transform: translateX(6px); }
   60% { transform: translateX(-4px); }
   80% { transform: translateX(4px); }
 }
-
-.verse-gate-msg { min-height: 20px; margin-top: 10px; font-size: 14px; color: var(--ink-soft); }
-.verse-gate-msg.hint { color: var(--red); }
+.seal-msg {
+  min-height: 18px;
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--red);
+  font-style: italic;
+}
+.seal-msg.success {
+  color: #1e6b34;
+}
 
 /* ---------- joystick ---------- */
 #joystick {

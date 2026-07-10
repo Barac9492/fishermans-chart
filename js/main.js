@@ -8,7 +8,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { Water } from 'three/addons/objects/Water.js';
-import { SITES, EPILOGUE, VERSE_GATES } from './sites.js';
+import { SITES, EPILOGUE } from './sites.js';
 import { audio } from './audio.js';
 
 /* ============================================================
@@ -2392,12 +2392,12 @@ const cardQuestion = document.getElementById('card-question');
 const epilogueEl = document.getElementById('epilogue');
 const recordEl = document.getElementById('record');
 const recordWrapEl = document.getElementById('record-wrap');
-const verseGateEl = document.getElementById('verse-gate');
-const verseGateRef = document.getElementById('verse-gate-ref');
-const verseGateQuote = document.getElementById('verse-gate-quote');
-const verseGateInput = document.getElementById('verse-gate-input');
-const verseGateMsg = document.getElementById('verse-gate-msg');
-const verseGateSubmit = document.getElementById('verse-gate-submit');
+const cardCloseBtn = document.getElementById('card-close');
+const cardSealBox = document.getElementById('card-seal-box');
+const sealVerse = document.getElementById('seal-verse');
+const sealInput = document.getElementById('seal-input');
+const sealSubmit = document.getElementById('seal-submit');
+const sealMsg = document.getElementById('seal-msg');
 const progressEl = document.getElementById('progress');
 const compassEl = document.getElementById('compass');
 const compassArrow = document.getElementById('compass-arrow');
@@ -2803,6 +2803,12 @@ function lockedToast() {
   toast(`아직 순서가 아니에요 — 다음은 ${nextNum}번이에요. 위의 「다음」 안내를 따라가요.`);
 }
 
+let activeSeal = null; // { marker, attempts }
+
+function normalizeAnswer(s) {
+  return s.replace(/\s+/g, '').replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, '').trim();
+}
+
 function openCard(marker) {
   const s = marker.site;
   beginCard(s.num, s.title, s.dates);
@@ -2825,28 +2831,112 @@ function openCard(marker) {
   }
   cardBody.innerHTML = s.body.map((p) => `<p>${p}</p>`).join('');
   cardArtifact.style.display = '';
+  
   const firstVisit = !marker.visited;
   cardArtifact.innerHTML = firstVisit
     ? `<b>보따리에 담았다</b> · ${s.artifact} &nbsp;${s.relic || ''}`
     : `<b>이미 보따리에 있다</b> · ${s.artifact} &nbsp;${s.relic || ''}`;
   cardArtifact.classList.toggle('stamped', firstVisit);
+  
   if (s.question) {
     cardQuestion.textContent = s.question.replace(/\s+/g, ' ').trim();
     cardDiscuss.classList.remove('hidden');
   }
   cardEl.classList.remove('hidden');
+
   if (firstVisit) {
-    chartSite(marker);
-    if (marker.site.id === 'voyage-to-rome') pendingVoyage = true;
+    // 말씀 새기기 UI 활성화 (아직 지도에 기록하지 않음)
+    activeSeal = { marker, attempts: 0 };
+    cardSealBox.classList.remove('hidden');
+    
+    const seal = s.seal;
+    sealVerse.innerHTML = `${seal.before}<span id="seal-blank" class="seal-blank">＿＿＿</span>${seal.after}`;
+    sealInput.value = '';
+    sealInput.disabled = false;
+    sealSubmit.disabled = false;
+    sealMsg.textContent = '';
+    sealMsg.className = 'seal-msg';
+    
+    cardCloseBtn.disabled = true;
+    cardCloseBtn.textContent = '말씀을 새겨야 완료됩니다';
+  } else {
+    // 재방문인 경우 말씀 새기기 상자 숨김 및 바로 닫기 버튼 활성화
+    activeSeal = null;
+    cardSealBox.classList.add('hidden');
+    cardCloseBtn.disabled = false;
+    cardCloseBtn.textContent = '계속 걷기';
   }
 }
 
+// 말씀 새기기 정답 제출 및 검사
+function submitSeal() {
+  if (!activeSeal) return;
+  const seal = activeSeal.marker.site.seal;
+  const typed = normalizeAnswer(sealInput.value);
+  const target = normalizeAnswer(seal.answer);
+  
+  if (typed === target) {
+    audio.play('chime');
+    
+    // 말씀 빈칸 채우기 완료 연출
+    const blankEl = document.getElementById('seal-blank');
+    if (blankEl) {
+      blankEl.textContent = seal.answer;
+      blankEl.classList.add('solved');
+    }
+    
+    sealInput.disabled = true;
+    sealSubmit.disabled = true;
+    
+    sealMsg.textContent = '말씀이 마음에 새겨졌습니다.';
+    sealMsg.className = 'seal-msg success';
+    
+    // 정답을 맞춘 시점에 비로소 차팅(지도 및 유물 기록) 반영
+    chartSite(activeSeal.marker);
+    
+    if (activeSeal.marker.site.id === 'voyage-to-rome') pendingVoyage = true;
+    
+    cardCloseBtn.disabled = false;
+    cardCloseBtn.textContent = '계속 걷기';
+  } else {
+    activeSeal.attempts++;
+    sealInput.classList.remove('shake');
+    void sealInput.offsetWidth; // 쉐이크 애니메이션을 위한 리플로우
+    sealInput.classList.add('shake');
+    
+    const ansLen = normalizeAnswer(seal.answer).length;
+    if (activeSeal.attempts >= 3) {
+      sealMsg.textContent = `글자가 조금 다른 것 같아요. 상단 구절을 읽고 알맞은 단어를 넣어 보세요. (정답 ${ansLen}글자)`;
+    } else {
+      sealMsg.textContent = `글자가 조금 달라요. 단어와 띄어쓰기를 다시 확인해 보세요.`;
+    }
+    sealMsg.className = 'seal-msg';
+  }
+}
+
+sealSubmit.addEventListener('click', submitSeal);
+sealInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    submitSeal();
+  }
+});
+
+// 복사 / 붙여넣기 및 드래그 방지
+['paste', 'copy', 'cut', 'drop'].forEach((evt) => {
+  sealInput.addEventListener(evt, (e) => e.preventDefault());
+});
+sealInput.addEventListener('contextmenu', (e) => e.preventDefault());
+
 document.getElementById('card-close').addEventListener('click', () => {
   if (ghostClick()) return;
+  
+  // 말씀이 안 새겨졌으면 닫기 차단
+  if (activeSeal && cardCloseBtn.disabled) return;
+  
   cardEl.classList.add('hidden');
   const charted = pendingPinFx; // 방금 처음 기록한 표지 (재방문이면 null)
   if (pendingPinFx) {
-    // 표지가 회색(대기) 상태에서 기록될 수도 있으니, 지금 색에서 먹색으로 저물게 한다
     pinFx.push({
       m: pendingPinFx, t: 0,
       from: pendingPinFx.pinMat.color.clone(),
@@ -2856,9 +2946,8 @@ document.getElementById('card-close').addEventListener('click', () => {
     goldBurst(pendingPinFx.site.pos.x, pendingPinFx.site.pos.z, 4); // 기록의 불꽃
     pendingPinFx = null;
   }
-  // 부르심·고백·부인·회복 — 네 고비에서는 말씀을 직접 옮겨 적어야 다음 걸음으로 간다
-  const gate = charted && VERSE_GATES[charted.site.id];
-  if (gate) { openVerseGate(charted, gate); return; }
+  
+  activeSeal = null;
   finishCardClose(charted);
 });
 
@@ -2883,86 +2972,6 @@ function finishCardClose(charted) {
   // 긴 밤이 끝나면 아침 빛으로 돌아온다
   if (charted && charted.site.id === 'long-night') warmthOverride = null;
 }
-
-/* ---------------- 말씀 새기기 — 부르심·고백·부인·회복, 손으로 옮겨 적어야 다음으로 간다 ---------------- */
-
-let verseGate = null; // { marker, gate, attempts }
-
-// 두 문자열 사이 편집 거리 — 붙여넣기 없이 손으로 옮겨 적은 결과를 채점한다
-function levenshtein(a, b) {
-  const m = a.length, n = b.length;
-  if (!m) return n;
-  if (!n) return m;
-  let prev = Array.from({ length: n + 1 }, (_, j) => j);
-  const curr = new Array(n + 1);
-  for (let i = 1; i <= m; i++) {
-    curr[0] = i;
-    for (let j = 1; j <= n; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
-    }
-    for (let j = 0; j <= n; j++) prev[j] = curr[j];
-  }
-  return prev[n];
-}
-function normalizeVerse(s) { return s.replace(/\s+/g, ' ').trim(); }
-function verseSimilarity(typed, target) {
-  const a = normalizeVerse(typed), b = normalizeVerse(target);
-  if (!a) return 0;
-  return 1 - levenshtein(a, b) / Math.max(a.length, b.length, 1);
-}
-function verseGateTarget(gate) { return gate.verses.map((v) => v.text).join(' '); }
-// 여러 번 시도해도 못 넘으면 문턱을 조금씩 낮춘다 — 챌린지는 있되 포기하게 두지 않는다
-function verseGateThreshold(attempts) {
-  if (attempts < 3) return 0.9;
-  if (attempts < 6) return 0.8;
-  return 0.68;
-}
-
-function openVerseGate(marker, gate) {
-  verseGate = { marker, gate, attempts: 0 };
-  verseGateRef.textContent = `${gate.ref} — 위 말씀을 손으로 옮겨 적어야 다음 걸음으로 갈 수 있어요`;
-  verseGateQuote.innerHTML = gate.verses.map((v) => `<p><b>${v.n}</b>${v.text}</p>`).join('');
-  verseGateInput.value = '';
-  verseGateMsg.textContent = '';
-  verseGateMsg.classList.remove('hint');
-  verseGateEl.classList.remove('hidden');
-  for (const k in keys) keys[k] = false; // 유령 키 예방 (togglePause와 같은 방어)
-  setTimeout(() => verseGateInput.focus(), 60);
-}
-
-verseGateSubmit.addEventListener('click', () => {
-  if (!verseGate) return;
-  const score = verseSimilarity(verseGateInput.value, verseGateTarget(verseGate.gate));
-  if (score >= verseGateThreshold(verseGate.attempts)) {
-    audio.play('chime');
-    const { marker } = verseGate;
-    verseGateEl.classList.add('hidden');
-    verseGate = null;
-    finishCardClose(marker);
-    return;
-  }
-  verseGate.attempts++;
-  verseGateInput.classList.remove('shake');
-  void verseGateInput.offsetWidth; // 애니메이션 재시작을 위한 리플로우
-  verseGateInput.classList.add('shake');
-  if (verseGate.attempts >= 5) {
-    verseGateMsg.textContent = '정성껏 여러 번 옮겨 적었어요 — 이번엔 조금 달라도 괜찮아요. 한 번만 더 확인해 볼까요?';
-  } else if (verseGate.attempts >= 3) {
-    verseGateMsg.textContent = '거의 다 왔어요 — 위 말씀을 한 글자씩 다시 살펴보고 이어서 적어볼까요?';
-  } else {
-    verseGateMsg.textContent = '조금 다른 곳이 있어요 — 위 말씀을 다시 읽고 손으로 옮겨 적어봐요.';
-  }
-  verseGateMsg.classList.add('hint');
-});
-
-// 붙여넣기·복사·드래그로는 옮겨 적을 수 없다 — 손으로 직접 쳐야 한다
-['paste', 'copy', 'cut', 'drop'].forEach((evt) => {
-  verseGateInput.addEventListener(evt, (e) => e.preventDefault());
-});
-verseGateInput.addEventListener('contextmenu', (e) => e.preventDefault());
-verseGateQuote.addEventListener('copy', (e) => e.preventDefault());
-verseGateQuote.addEventListener('contextmenu', (e) => e.preventDefault());
 
 function showEpilogue() {
   modalOpenedAt = performance.now();
@@ -3815,6 +3824,46 @@ flows.nets = {
     });
     this.step++;
   },
+};
+
+flows['long-night'] = {
+  step: 0,
+  label() { return '🕸 그물 던지기'; },
+  advance(marker) {
+    this.throw(marker);
+  },
+  throw(marker) {
+    let lineText = '';
+    if (this.step === 0) {
+      lineText = '밤새 애써도 아무것도 잡지 못한 어둠 속에, 다시 그물을 던질 준비를 한다.';
+    } else if (this.step === 1) {
+      lineText = '아무것도 없다.';
+    } else {
+      lineText = '밤이 깊어간다. 여전히 아무것도.';
+    }
+    showDialog('', lineText);
+    
+    const btnLabel = this.step === 0 ? '그물을 던진다' : (this.step === 1 ? '그물을 다시 던진다' : '그물을 한 번 더 던진다');
+    dialogButton(btnLabel, () => {
+      audio.play('splash', { gain: 0.35 });
+      dialogActions.innerHTML = ''; // 중복 클릭 방지
+      dialogLine.textContent = '그물을 끌어 올리는 중…';
+      setTimeout(() => {
+        this.step++;
+        if (this.step === 1) {
+          this.throw(marker);
+        } else if (this.step === 2) {
+          this.throw(marker);
+        } else {
+          showDialog('', '동이 트는데도, 그물은 비어 있다.');
+          setTimeout(() => {
+            closeDialog();
+            openCard(marker);
+          }, 1500);
+        }
+      }, 2200);
+    });
+  }
 };
 
 flows['caesarea-philippi'] = {
@@ -5425,7 +5474,20 @@ window.__qa = {
   get keys() { return keys; },
   // 테스트 전용: 사전 연출(그물 던지기·대화)을 건너뛰고 카드를 바로 연다.
   // openCard() 자체는 실제 플레이와 같은 경로이므로 카드 이후 로직(말씀 새기기 등) 검증에 쓴다.
-  openMarker(id) { const m = markerById[id]; if (m) openCard(m); return !!m; },
+  openMarker(id, autoChart = false) {
+    const m = markerById[id];
+    if (m) {
+      openCard(m);
+      if (autoChart) {
+        chartSite(m);
+        activeSeal = null;
+        cardSealBox.classList.add('hidden');
+        cardCloseBtn.disabled = false;
+        cardCloseBtn.textContent = '계속 걷기';
+      }
+    }
+    return !!m;
+  },
   // 테스트 전용: 양 12마리를 즉시 채운다. collectSheep()의 3D 연출은 건너뛰지만,
   // checkRecordComplete()는 실제 코드 경로 그대로 호출한다.
   fillSheep() {

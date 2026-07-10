@@ -44,7 +44,7 @@ const SITE_IDS = [
   check('시작 시각 기록됨', typeof startedAt1 === 'number' && startedAt1 > 0);
 
   for (const id of SITE_IDS.slice(0, 13)) {
-    await page.evaluate((siteId) => window.__qa.openMarker(siteId), id);
+    await page.evaluate((siteId) => window.__qa.openMarker(siteId, true), id);
   }
   let rec = await page.evaluate(() => window.__qa.record);
   check('13/14 사이트만으로는 미완성', rec.finishedAt === null, JSON.stringify(rec));
@@ -53,7 +53,7 @@ const SITE_IDS = [
   rec = await page.evaluate(() => window.__qa.record);
   check('양 12마리만으로는(사이트 13/14) 미완성', rec.finishedAt === null, JSON.stringify(rec));
 
-  await page.evaluate((siteId) => window.__qa.openMarker(siteId), SITE_IDS[13]);
+  await page.evaluate((siteId) => window.__qa.openMarker(siteId, true), SITE_IDS[13]);
   rec = await page.evaluate(() => window.__qa.record);
   check('시나리오 A: 14번째 사이트에서 완성', typeof rec.finishedAt === 'number' && rec.finishedAt > 0, JSON.stringify(rec));
 
@@ -98,10 +98,10 @@ const SITE_IDS = [
   await sleep(800);
 
   for (const id of SITE_IDS.slice(0, 13)) {
-    await page.evaluate((siteId) => window.__qa.openMarker(siteId), id);
+    await page.evaluate((siteId) => window.__qa.openMarker(siteId, true), id);
   }
   await page.evaluate(() => window.__qa.fillSheep());
-  await page.evaluate((siteId) => window.__qa.openMarker(siteId), SITE_IDS[13]);
+  await page.evaluate((siteId) => window.__qa.openMarker(siteId, true), SITE_IDS[13]);
   rec = await page.evaluate(() => window.__qa.record);
   check('시나리오 B: 순서 무관하게 완성', typeof rec.finishedAt === 'number' && rec.finishedAt > 0, JSON.stringify(rec));
 
