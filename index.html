@@ -138,6 +138,30 @@
     </div>
   </div>
 
+  <!-- 완주 기록 — 14곳 + 잃은 양 12마리를 모두 채우면 시간이 새겨진다. 자동 순위표는 없고,
+       이 카드를 직접 캡처·공유하는 매뉴얼 인증이다. 일시정지 메뉴에서 언제든 다시 열 수 있다. -->
+  <div id="record" class="overlay hidden">
+    <div class="card-inner record-inner">
+      <h2>완주 기록</h2>
+      <p class="dates">14곳 + 잃은 양 12마리 — 26/26</p>
+      <div id="record-wrap"></div>
+      <button id="record-close">닫기</button>
+    </div>
+  </div>
+
+  <!-- 말씀 새기기 — 부르심·고백·부인·회복, 손으로 옮겨 적어야 다음으로 간다 -->
+  <div id="verse-gate" class="overlay hidden">
+    <div class="card-inner verse-gate-inner">
+      <h2>말씀을 옮겨 적어요</h2>
+      <p id="verse-gate-ref" class="dates"></p>
+      <div id="verse-gate-quote" class="verse verse-gate-quote"></div>
+      <textarea id="verse-gate-input" rows="4" placeholder="위 말씀을 손으로 옮겨 적어 보세요"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
+      <p id="verse-gate-msg" class="verse-gate-msg"></p>
+      <button id="verse-gate-submit">새겨넣기</button>
+    </div>
+  </div>
+
   <!-- 일시정지 — 잠시 쉬어가기 -->
   <div id="pause" class="overlay hidden">
     <div class="pause-inner">
@@ -145,6 +169,7 @@
       <button id="pause-resume">계속 걷기</button>
       <button id="pause-sound" class="pause-opt">소리: 켬</button>
       <button id="pause-quality" class="pause-opt">화질: 자동</button>
+      <button id="pause-record" class="pause-opt hidden">🏁 완주 기록 카드 보기</button>
       <button id="pause-restart" class="danger">처음부터 다시</button>
       <p class="pause-controls">W A S D 걷기 · Shift 달리기 · E 방문 · M 지도 · Esc 쉬기</p>
       <p class="guide-link"><a href="./guide.html" target="_blank">인도자용 나눔 가이드 →</a></p>

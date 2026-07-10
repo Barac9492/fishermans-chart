@@ -391,16 +391,16 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
   100% { transform: scale(1); }
 }
 
-/* 기념 카드 (완주 시) */
-#souvenir-wrap { margin-top: 18px; }
-#souvenir-name-row {
+/* 기념 카드 (완주 시) — 에필로그의 #souvenir-wrap과 일시정지의 #record-wrap이 함께 쓴다 */
+#souvenir-wrap, #record-wrap { margin-top: 18px; }
+.souvenir-name-row {
   display: flex;
   gap: 8px;
   justify-content: center;
   align-items: stretch;
   margin-bottom: 12px;
 }
-#souvenir-name {
+.souvenir-name {
   font-family: 'Noto Serif KR', Georgia, serif;
   font-size: 16px;
   padding: 9px 14px;
@@ -411,13 +411,13 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
   border-radius: 3px;
   text-align: center;
 }
-#souvenir-name:focus { outline: 2px solid var(--gold); }
-#souvenir-name-btn {
+.souvenir-name:focus { outline: 2px solid var(--gold); }
+.souvenir-name-btn {
   margin: 0;
   font-size: 15px;
   padding: 9px 16px;
 }
-#souvenir-img {
+.souvenir-img {
   display: block;
   width: 100%;
   max-width: 300px;
@@ -425,7 +425,7 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
   border: 1.5px solid var(--ink);
   box-shadow: 3px 3px 0 rgba(43, 38, 32, 0.25);
 }
-#souvenir-btn {
+.souvenir-btn {
   margin-top: 0;
   font-size: 15px;
   padding: 9px 22px;
@@ -615,11 +615,52 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
   to { opacity: 1; transform: rotate(-9deg) scale(1); }
 }
 
-#card-close, #epilogue-close { margin-top: 20px; }
+#card-close, #epilogue-close, #record-close { margin-top: 20px; }
 
 .epilogue-inner { max-width: 600px; }
 .epilogue-inner h2 { margin-top: 14px; font-family: 'Nanum Myeongjo', serif; font-weight: 800; letter-spacing: 0.04em; }
 .ep-quote { margin-top: 18px; }
+
+.record-inner { max-width: 480px; }
+.record-inner h2 { font-family: 'Nanum Myeongjo', serif; font-weight: 800; letter-spacing: 0.04em; }
+
+/* ---------- 말씀 새기기 ---------- */
+.verse-gate-inner { max-width: 520px; }
+.verse-gate-quote {
+  text-align: left;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.verse-gate-quote p { margin: 0 0 6px; }
+.verse-gate-quote p:last-child { margin-bottom: 0; }
+.verse-gate-quote b { margin-right: 6px; color: var(--red); font-weight: 700; font-style: normal; }
+
+#verse-gate-input {
+  display: block;
+  width: 100%;
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  font-family: 'Noto Serif KR', Georgia, serif;
+  font-size: clamp(15px, 2.6vw, 17px);
+  line-height: 1.6;
+  color: var(--ink);
+  background: #fff;
+  border: 1.5px solid var(--ink);
+  border-radius: 3px;
+  resize: vertical;
+}
+#verse-gate-input:focus { outline: 2px solid var(--gold); outline-offset: 1px; }
+#verse-gate-input.shake { animation: verse-shake 0.4s ease; }
+@keyframes verse-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+
+.verse-gate-msg { min-height: 20px; margin-top: 10px; font-size: 14px; color: var(--ink-soft); }
+.verse-gate-msg.hint { color: var(--red); }
 
 /* ---------- joystick ---------- */
 #joystick {
