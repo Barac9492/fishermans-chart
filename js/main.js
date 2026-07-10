@@ -8,7 +8,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Sky } from 'three/addons/objects/Sky.js';
 import { Water } from 'three/addons/objects/Water.js';
-import { SITES, EPILOGUE } from './sites.js';
+import { SITES, EPILOGUE, VERSE_GATES } from './sites.js';
 import { audio } from './audio.js';
 
 /* ============================================================
@@ -2050,7 +2050,8 @@ function regionWarmth(x, z) {
 
 const keys = {};
 window.addEventListener('keydown', (e) => {
-  if (e.target && e.target.tagName === 'INPUT') return; // 이름 입력 중엔 게임 키를 먹지 않는다
+  // 이름 입력·말씀 옮겨 적기 중엔 게임 키를 먹지 않는다
+  if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
   keys[e.code] = true;
   if (credits) { skipCredits(); return; } // 크레딧: 아무 키나 눌러 건너뛴다
   // 쉬어가기 — 쉬는 중이면 다시 걷기. 쉴 수 없는 자리(컷신)에선 삼키지 않고
@@ -2173,6 +2174,12 @@ const cardArtifact = document.getElementById('card-artifact');
 const cardDiscuss = document.getElementById('card-discuss');
 const cardQuestion = document.getElementById('card-question');
 const epilogueEl = document.getElementById('epilogue');
+const verseGateEl = document.getElementById('verse-gate');
+const verseGateRef = document.getElementById('verse-gate-ref');
+const verseGateQuote = document.getElementById('verse-gate-quote');
+const verseGateInput = document.getElementById('verse-gate-input');
+const verseGateMsg = document.getElementById('verse-gate-msg');
+const verseGateSubmit = document.getElementById('verse-gate-submit');
 const progressEl = document.getElementById('progress');
 const compassEl = document.getElementById('compass');
 const compassArrow = document.getElementById('compass-arrow');
@@ -2579,7 +2586,6 @@ function openCard(marker) {
 document.getElementById('card-close').addEventListener('click', () => {
   if (ghostClick()) return;
   cardEl.classList.add('hidden');
-  state.modal = false;
   const charted = pendingPinFx; // 방금 처음 기록한 표지 (재방문이면 null)
   if (pendingPinFx) {
     // 표지가 회색(대기) 상태에서 기록될 수도 있으니, 지금 색에서 먹색으로 저물게 한다
@@ -2592,6 +2598,14 @@ document.getElementById('card-close').addEventListener('click', () => {
     goldBurst(pendingPinFx.site.pos.x, pendingPinFx.site.pos.z, 4); // 기록의 불꽃
     pendingPinFx = null;
   }
+  // 부르심·고백·부인·회복 — 네 고비에서는 말씀을 직접 옮겨 적어야 다음 걸음으로 간다
+  const gate = charted && VERSE_GATES[charted.site.id];
+  if (gate) { openVerseGate(charted, gate); return; }
+  finishCardClose(charted);
+});
+
+function finishCardClose(charted) {
+  state.modal = false;
   if (waterWalk && (waterWalk.phase === 'walk' || waterWalk.phase === 'arrived')) {
     // 물 위 걷기 중 3번 카드를 닫으면 배가 물가로 데려다 준다
     startWaterWalkReturn();
@@ -2610,7 +2624,87 @@ document.getElementById('card-close').addEventListener('click', () => {
   }
   // 긴 밤이 끝나면 아침 빛으로 돌아온다
   if (charted && charted.site.id === 'long-night') warmthOverride = null;
+}
+
+/* ---------------- 말씀 새기기 — 부르심·고백·부인·회복, 손으로 옮겨 적어야 다음으로 간다 ---------------- */
+
+let verseGate = null; // { marker, gate, attempts }
+
+// 두 문자열 사이 편집 거리 — 붙여넣기 없이 손으로 옮겨 적은 결과를 채점한다
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  if (!m) return n;
+  if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  const curr = new Array(n + 1);
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+    }
+    for (let j = 0; j <= n; j++) prev[j] = curr[j];
+  }
+  return prev[n];
+}
+function normalizeVerse(s) { return s.replace(/\s+/g, ' ').trim(); }
+function verseSimilarity(typed, target) {
+  const a = normalizeVerse(typed), b = normalizeVerse(target);
+  if (!a) return 0;
+  return 1 - levenshtein(a, b) / Math.max(a.length, b.length, 1);
+}
+function verseGateTarget(gate) { return gate.verses.map((v) => v.text).join(' '); }
+// 여러 번 시도해도 못 넘으면 문턱을 조금씩 낮춘다 — 챌린지는 있되 포기하게 두지 않는다
+function verseGateThreshold(attempts) {
+  if (attempts < 3) return 0.9;
+  if (attempts < 6) return 0.8;
+  return 0.68;
+}
+
+function openVerseGate(marker, gate) {
+  verseGate = { marker, gate, attempts: 0 };
+  verseGateRef.textContent = `${gate.ref} — 위 말씀을 손으로 옮겨 적어야 다음 걸음으로 갈 수 있어요`;
+  verseGateQuote.innerHTML = gate.verses.map((v) => `<p><b>${v.n}</b>${v.text}</p>`).join('');
+  verseGateInput.value = '';
+  verseGateMsg.textContent = '';
+  verseGateMsg.classList.remove('hint');
+  verseGateEl.classList.remove('hidden');
+  for (const k in keys) keys[k] = false; // 유령 키 예방 (togglePause와 같은 방어)
+  setTimeout(() => verseGateInput.focus(), 60);
+}
+
+verseGateSubmit.addEventListener('click', () => {
+  if (!verseGate) return;
+  const score = verseSimilarity(verseGateInput.value, verseGateTarget(verseGate.gate));
+  if (score >= verseGateThreshold(verseGate.attempts)) {
+    audio.play('chime');
+    const { marker } = verseGate;
+    verseGateEl.classList.add('hidden');
+    verseGate = null;
+    finishCardClose(marker);
+    return;
+  }
+  verseGate.attempts++;
+  verseGateInput.classList.remove('shake');
+  void verseGateInput.offsetWidth; // 애니메이션 재시작을 위한 리플로우
+  verseGateInput.classList.add('shake');
+  if (verseGate.attempts >= 5) {
+    verseGateMsg.textContent = '정성껏 여러 번 옮겨 적었어요 — 이번엔 조금 달라도 괜찮아요. 한 번만 더 확인해 볼까요?';
+  } else if (verseGate.attempts >= 3) {
+    verseGateMsg.textContent = '거의 다 왔어요 — 위 말씀을 한 글자씩 다시 살펴보고 이어서 적어볼까요?';
+  } else {
+    verseGateMsg.textContent = '조금 다른 곳이 있어요 — 위 말씀을 다시 읽고 손으로 옮겨 적어봐요.';
+  }
+  verseGateMsg.classList.add('hint');
 });
+
+// 붙여넣기·복사·드래그로는 옮겨 적을 수 없다 — 손으로 직접 쳐야 한다
+['paste', 'copy', 'cut', 'drop'].forEach((evt) => {
+  verseGateInput.addEventListener(evt, (e) => e.preventDefault());
+});
+verseGateInput.addEventListener('contextmenu', (e) => e.preventDefault());
+verseGateQuote.addEventListener('copy', (e) => e.preventDefault());
+verseGateQuote.addEventListener('contextmenu', (e) => e.preventDefault());
 
 function showEpilogue() {
   modalOpenedAt = performance.now();
@@ -5062,6 +5156,9 @@ window.__qa = {
     };
   },
   get keys() { return keys; },
+  // 테스트 전용: 사전 연출(그물 던지기·대화)을 건너뛰고 카드를 바로 연다.
+  // openCard() 자체는 실제 플레이와 같은 경로이므로 카드 이후 로직(말씀 새기기 등) 검증에 쓴다.
+  openMarker(id) { const m = markerById[id]; if (m) openCard(m); return !!m; },
 };
 
 animate();
