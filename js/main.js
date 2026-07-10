@@ -2817,6 +2817,26 @@ function normalizeAnswer(s) {
   return s.replace(/\s+/g, '').replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, '').trim();
 }
 
+// 레벤슈타인 거리 — 약간의 오타(한 글자 대치/추가/누락)를 허용하기 위함
+function editDistance(a, b) {
+  const rows = a.length + 1;
+  const cols = b.length + 1;
+  const d = Array.from({ length: rows }, (_, i) => [i, ...Array(cols - 1).fill(0)]);
+  for (let j = 0; j < cols; j++) d[0][j] = j;
+  for (let i = 1; i < rows; i++) {
+    for (let j = 1; j < cols; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+    }
+  }
+  return d[rows - 1][cols - 1];
+}
+
+// 정답 글자 수에 비례해 허용 오타 수를 정한다 (짧은 답은 1글자, 긴 답은 최대 2글자)
+function allowedTypos(target) {
+  return target.length <= 6 ? 1 : 2;
+}
+
 function openCard(marker) {
   const s = marker.site;
   beginCard(s.num, s.title, s.dates);
@@ -2882,8 +2902,8 @@ function submitSeal() {
   const seal = activeSeal.marker.site.seal;
   const typed = normalizeAnswer(sealInput.value);
   const target = normalizeAnswer(seal.answer);
-  
-  if (typed === target) {
+
+  if (typed === target || (typed.length > 0 && editDistance(typed, target) <= allowedTypos(target))) {
     audio.play('chime');
     
     // 말씀 빈칸 채우기 완료 연출
