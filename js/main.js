@@ -432,7 +432,7 @@ function box(w, h, d, color, x, y, z, parent = scene, shadow = true) {
 function cylBetween(p1, p2, r, color, parent = scene) {
   const dir = new THREE.Vector3().subVectors(p2, p1);
   const len = dir.length();
-  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 6), lambert(color));
+  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 12), lambert(color));
   mesh.position.copy(p1).addScaledVector(dir, 0.5);
   mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
   parent.add(mesh);
@@ -565,7 +565,7 @@ waterGeo.rotateX(-Math.PI / 2);
 const waterBase = waterGeo.attributes.position.array.slice();
 const seaWater = new THREE.Mesh(
   waterGeo,
-  new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.3, metalness: 0.05, flatShading: true, envMapIntensity: 1.15 })
+  new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.3, metalness: 0.05, envMapIntensity: 1.15 })
 );
 seaWater.position.set(-90, -0.6, -20);
 seaWater.receiveShadow = true;
@@ -576,7 +576,7 @@ lakeGeo.rotateX(-Math.PI / 2);
 const lakeBase = lakeGeo.attributes.position.array.slice();
 const lakeWater = new THREE.Mesh(
   lakeGeo,
-  new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.24, metalness: 0.05, flatShading: true, envMapIntensity: 1.15 })
+  new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.24, metalness: 0.05, envMapIntensity: 1.15 })
 );
 lakeWater.position.set(0, -0.42, -129);
 lakeWater.receiveShadow = true;
@@ -1143,13 +1143,13 @@ function tree(x, z, s = 1, kind = 'olive') {
   const g = new THREE.Group();
   swayers.push({ g, ph: Math.random() * 6 });
   const trunkColor = kind === 'palm' ? COLORS.palmTrunk : COLORS.oliveTrunk;
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.13 * s, 0.22 * s, 1.3 * s, 5), lambert(trunkColor));
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.13 * s, 0.22 * s, 1.3 * s, 12), lambert(trunkColor));
   trunk.position.y = 0.65 * s;
   trunk.castShadow = true;
   g.add(trunk);
   if (kind === 'palm') {
     for (let i = 0; i < 6; i++) {
-      const frond = new THREE.Mesh(new THREE.ConeGeometry(0.16 * s, 1.7 * s, 4), lambert(COLORS.oliveLeaf));
+      const frond = new THREE.Mesh(new THREE.ConeGeometry(0.16 * s, 1.7 * s, 8), lambert(COLORS.oliveLeaf));
       frond.position.y = 1.3 * s;
       frond.rotation.z = Math.PI / 2.3;
       frond.rotation.y = (i / 6) * Math.PI * 2;
@@ -1157,7 +1157,7 @@ function tree(x, z, s = 1, kind = 'olive') {
       g.add(frond);
     }
   } else {
-    const fol = new THREE.Mesh(new THREE.SphereGeometry(0.85 * s, 7, 6), new THREE.MeshLambertMaterial({ color: COLORS.oliveLeaf, flatShading: true }));
+    const fol = new THREE.Mesh(new THREE.SphereGeometry(0.85 * s, 18, 14), new THREE.MeshLambertMaterial({ color: COLORS.oliveLeaf }));
     fol.position.y = 1.55 * s;
     fol.scale.y = 0.85;
     fol.castShadow = true;
@@ -1349,7 +1349,7 @@ function fishingShoreSet(cx, cz, rotY = 0) {
   }
   rack.add(box(2.05, 0.08, 0.08, MAT.woodDark, 0, 1.32, 0, rack, false));
   for (const rx of [-0.55, -0.18, 0.2, 0.57]) {
-    const fish = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 6), lambert(0xb0b8ab));
+    const fish = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 12), lambert(0xb0b8ab));
     fish.scale.set(0.65, 1.3, 1.6);
     fish.position.set(rx, 1.02 + Math.random() * 0.08, 0.02);
     rack.add(fish);
@@ -1569,7 +1569,7 @@ tower(0, 90, 8);
   const hull = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.3, 9), lambert(0x5a4a38));
   hull.position.y = 0.65;
   hull.castShadow = true;
-  const mast1 = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 7, 6), lambert(COLORS.woodDark));
+  const mast1 = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 7, 12), lambert(COLORS.woodDark));
   mast1.position.set(0, 4, 1);
   const sail = new THREE.Mesh(new THREE.PlaneGeometry(3, 4), new THREE.MeshLambertMaterial({ color: 0xe8dfc4, side: THREE.DoubleSide }));
   sail.position.set(0, 4.6, 1);
@@ -1745,7 +1745,7 @@ const player = new THREE.Group();
   );
   robe.position.y = 1.52;
   robe.castShadow = true;
-  const sash = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.07, 6, 14), lambert(COLORS.woodDark));
+  const sash = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.07, 12, 28), lambert(COLORS.woodDark));
   sash.rotation.x = Math.PI / 2;
   sash.position.y = 1.35;
   // 클록: 로브 겉에 걸친 덧옷 — 등은 부풀리고 앞은 눌러 로브 속으로 가라앉혀
@@ -1783,7 +1783,7 @@ const player = new THREE.Group();
   beard.scale.set(1, 1.15, 0.9); // 턱의 곡선을 따라 아래로 길게
   // 두건: 머리 뒤에서 어깨로 흘러내리는 반구 셸 — 뒷모습의 윤곽을 만든다
   const mantle = new THREE.Mesh(
-    new THREE.SphereGeometry(0.46, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), // 작아진 머리에 맞춤
+    new THREE.SphereGeometry(0.46, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), // 작아진 머리에 맞춤
     new THREE.MeshLambertMaterial({ color: COLORS.mantle, side: THREE.DoubleSide })
   );
   mantle.position.set(0, 2.62, -0.15);
@@ -1801,7 +1801,7 @@ const player = new THREE.Group();
   trim.castShadow = true;
   // 머리채: 뒤통수의 어두운 캡 — 뒤에서 봐도 맨들한 공이 아니게
   const hair = new THREE.Mesh(
-    new THREE.SphereGeometry(0.435, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), // 머리 -10%에 맞춤
+    new THREE.SphereGeometry(0.435, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), // 머리 -10%에 맞춤
     lambert(0x4a4038)
   );
   hair.position.set(0, 2.92, -0.03);
@@ -1838,7 +1838,7 @@ armR.position.set(0.52, 2.38, 0);
 armL.castShadow = armR.castShadow = true;
 player.add(armL, armR);
 // 손: 팔 끝의 살구색 구 — armL/armR의 자식이라 팔의 회전을 자동 추종
-const handL = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), lambert(0xc99a72));
+const handL = new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 12), lambert(0xc99a72));
 handL.position.y = -0.92;
 const handR = handL.clone();
 armL.add(handL);
@@ -1926,8 +1926,8 @@ const TOMB_MOUTH = { x: -37, z: 131 };
 // 양 한 마리
 function makeSheep(x, z) {
   const g = new THREE.Group();
-  const wool = new THREE.MeshLambertMaterial({ color: 0xe8e2d2, flatShading: true });
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6), wool);
+  const wool = new THREE.MeshLambertMaterial({ color: 0xe8e2d2 });
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 22, 16), wool);
   body.scale.set(1.3, 0.9, 1);
   body.position.y = 0.7;
   body.castShadow = true;
@@ -1962,7 +1962,7 @@ let shepherdG = null;
   robe.castShadow = true;
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.4, 10, 8), lambert(0xc99a72));
   head.position.y = 2.35;
-  const crook = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.6, 6), lambert(0x5a4128));
+  const crook = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.6, 12), lambert(0x5a4128));
   crook.position.set(0.5, 1.3, 0);
   crook.rotation.z = 0.12;
   shep.add(robe, head, crook);
@@ -1993,7 +1993,7 @@ const torches = [];
   const flameMat = new THREE.MeshBasicMaterial({ color: 0xff8a3a, transparent: true, opacity: 0.9, fog: false });
   flameMat.color.multiplyScalar(3.5); // HDR 부스트 — 블룸용 (clone들이 색을 물려받는다)
   for (const [x, z] of spots) {
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 1.2, 5), lambert(0x2a2018));
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 1.2, 10), lambert(0x2a2018));
     post.position.set(x, 7.6, z);
     const flame = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.7, 7), flameMat.clone());
     flame.position.set(x, 8.5, z);
@@ -2010,7 +2010,7 @@ function makeCamel() {
   body.position.y = 1.5;
   body.castShadow = true;
   for (const hx of [-0.25, 0.35]) {
-    const hump = new THREE.Mesh(new THREE.SphereGeometry(0.32, 8, 6), hide);
+    const hump = new THREE.Mesh(new THREE.SphereGeometry(0.32, 18, 12), hide);
     hump.position.set(0, 2, hx);
     g.add(hump);
   }
@@ -2213,7 +2213,7 @@ const clouds = [];
 // 원경 산맥: 지평선을 채우는 실루엣 — 안개가 깊이를 만들어 준다
 {
   const mtn = (x, z, r, h, col) => {
-    const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 7), new THREE.MeshLambertMaterial({ color: col, flatShading: true }));
+    const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 28), new THREE.MeshLambertMaterial({ color: col }));
     m.position.set(x, h / 2 - 2, z);
     m.rotation.y = Math.random();
     scene.add(m);
@@ -3353,7 +3353,7 @@ const shoreFigure = makeLightFigure(); // 새벽 바닷가 — 숯불 곁에 서
 shoreFigure.position.set(28.5, 0, -143.5);
 // 붙잡으시는 손: 구원의 순간에만 보이는 빛줄기
 const rescueBeam = new THREE.Mesh(
-  new THREE.CylinderGeometry(0.06, 0.06, 1, 6),
+  new THREE.CylinderGeometry(0.06, 0.06, 1, 12),
   new THREE.MeshBasicMaterial({ color: 0xfff0c0, transparent: true, opacity: 0.85, fog: false })
 );
 rescueBeam.material.color.multiplyScalar(3.5); // HDR 부스트 — 블룸용 (생성 시 1회)
@@ -3661,7 +3661,7 @@ const fishJumps = [];
 const fishMat = new THREE.MeshLambertMaterial({ color: 0xc7d2d6 });
 function fishBurst(x, z, n = 14) {
   for (let i = 0; i < n; i++) {
-    const f = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.5, 5), fishMat);
+    const f = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.5, 10), fishMat);
     f.position.set(x, 0, z);
     scene.add(f);
     const a = Math.random() * Math.PI * 2;
@@ -3971,12 +3971,12 @@ flows['fourth-watch'] = {
 function villager(x, z) {
   const g = new THREE.Group();
   const robe = new THREE.Mesh(
-    new THREE.ConeGeometry(0.55, 1.9, 8),
+    new THREE.ConeGeometry(0.55, 1.9, 16),
     lambert([0x8a7458, 0x6e5f49, 0x7d6a52, 0x5d5142][Math.floor(Math.random() * 4)])
   );
   robe.position.y = 0.95;
   robe.castShadow = true;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.36, 9, 7), lambert(0xc99a72));
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.36, 18, 12), lambert(0xc99a72));
   head.position.y = 2.2;
   g.add(robe, head);
   g.scale.setScalar(0.55);
@@ -4353,11 +4353,11 @@ const roosterG = (() => {
   body.position.y = 0.5;
   body.rotation.x = -0.4;
   body.castShadow = true;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 8, 7), lambert(0x7e5540));
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 18, 12), lambert(0x7e5540));
   head.position.set(0, 0.95, 0.22);
   const comb = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.18, 0.2), lambert(0xb0301f));
   comb.position.set(0, 1.13, 0.2);
-  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.55, 6), lambert(0x2e4034));
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.55, 12), lambert(0x2e4034));
   tail.position.set(0, 0.78, -0.34);
   tail.rotation.x = 0.9;
   g.add(body, head, comb, tail);
@@ -4375,13 +4375,13 @@ const roosterG = (() => {
 // 요나의 큰 물고기: 지중해를 떠돌다 이따금 떠오른다 — 발견한 사람만 아는 비밀
 const jonahG = (() => {
   const g = new THREE.Group();
-  const mat = new THREE.MeshLambertMaterial({ color: 0x3d4c58, flatShading: true });
-  const body = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 8), mat);
+  const mat = new THREE.MeshLambertMaterial({ color: 0x3d4c58 });
+  const body = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 18), mat);
   body.scale.set(4.2, 1.4, 1.7);
-  const tail = new THREE.Mesh(new THREE.ConeGeometry(1, 1.8, 4), mat);
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(1, 1.8, 14), mat);
   tail.position.set(-4.6, 0.3, 0);
   tail.rotation.z = Math.PI / 2;
-  const fin = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1, 4), mat);
+  const fin = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1, 12), mat);
   fin.position.set(0.4, 1.2, 0);
   g.add(body, tail, fin);
   body.userData.landmark = {
@@ -5268,6 +5268,8 @@ function animate() {
       lPos.array[i * 3 + 1] = Math.sin(x * 0.2 + t * 1.1) * Math.cos(z * 0.17 + t * 0.9) * 0.12;
     }
     lPos.needsUpdate = true;
+    // 매끈한 수면은 정점 법선으로 빛을 받으므로 물결이 움직일 때마다 법선을 다시 굽는다.
+    lakeGeo.computeVertexNormals();
   }
   const sPos = waterGeo.attributes.position;
   for (let i = 0; i < sPos.count; i++) {
@@ -5277,6 +5279,7 @@ function animate() {
       Math.sin(x * 0.2 - t * 1.4) * Math.sin(z * 0.16 + t * 1.1) * 0.12;
   }
   sPos.needsUpdate = true;
+  waterGeo.computeVertexNormals();
   // 포말선 숨쉬기: 물가의 흰 띠가 은은하게 밝아졌다 스러진다
   lakeFoam.material.opacity = 0.28 + 0.1 * Math.sin(t * 0.9);
   seaFoam.material.opacity = 0.16 + 0.1 * Math.sin(t * 0.9 + 1.3);
