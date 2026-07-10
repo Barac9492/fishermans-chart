@@ -3539,17 +3539,19 @@ function updateWaterWalk(dt) {
    7번 카드를 닫는 순간, 온 세계가 어두워진다. 복음의 중심 사건은
    멀리서 보더라도 세계 전체를 덮는 것으로 겪어야 한다. */
 const eclipseEl = document.getElementById('eclipse');
+const veilTearEl = document.getElementById('veil-tear');
 let eclipse = null;
 function startEclipse() {
   if (state.view === 'chart') toggleView();
   state.modal = true;
+  veilTearEl.classList.remove('torn');
   eclipse = {
     t: 0, dur: 16,
     caps: [
       { at: 1.0, text: '정오였다. 그런데 온 땅에 어둠이 내렸다. (눅 23:44)' },
       { at: 5.2, text: '세 시간이 지났을 때, 크게 외치는 소리가 들렸다.', cry: true },
       { at: 8.8, text: '"다 이루었다." (요 19:30)' },
-      { at: 12.2, text: '그 순간, 성전 휘장이 위에서 아래까지 찢어졌다.' },
+      { at: 12.2, text: '그 순간, 성전 휘장이 위에서 아래까지 찢어졌다.', veil: true },
     ],
   };
   voyageCaptionEl.textContent = '';
@@ -3568,11 +3570,13 @@ function updateEclipse(dt) {
     voyageCaptionEl.textContent = c.text;
     voyageCaptionEl.style.opacity = '1';
     if (c.cry) audio.play('horn', { freq: 49, gain: 0.42, dur: 3.4 });
+    if (c.veil) veilTearEl.classList.add('torn');
   }
   if (eclipse.t >= eclipse.dur) {
     eclipse = null;
     eclipseEl.style.opacity = '0';
     voyageCaptionEl.style.opacity = '0';
+    veilTearEl.classList.remove('torn');
     setTimeout(() => voyageCaptionEl.classList.add('hidden'), 800);
     state.modal = false;
   }
@@ -4172,13 +4176,22 @@ function makeBubbleTexture(text) {
 const TALK_LINES = [
   ['밤새 그물이 텅 비었다는군.', '회당에 새 선생님이 오셨대.', '시몬네 장모가 앓아누웠다던데.', '오늘은 호수가 잔잔하네.'],
   ['그 나사렛 선생 이야기 들었어?', '병자들이 낫고 있대!', '오천 명이 배불리 먹었다더군.', '그분이 예루살렘으로 가신대.'],
-  ['도성이 술렁이고 있어.', '한밤중에 그 선생이 잡혀갔대.', '정오였는데 온 땅이 어두웠잖아…', '성전 휘장이 찢어졌다더군.'],
+  ['도성이 술렁이고 있어.', '한밤중에 그 선생이 잡혀갔대.', '대제사장 뜰에 끌려갔다던데.', '오늘 밤 무슨 일이 벌어질지 아무도 몰라.'],
+  ['정오였는데 온 땅이 어두웠잖아…', '성전 휘장이 찢어졌다더군.', '백부장이 그가 진실로 의인이었다고 했대.', '갈릴리에서 온 여인들이 끝까지 지켜봤다더군.'],
   ['무덤이 비었다던데!', '그를 봤다는 사람들이 있어.', '갈릴리로 가라 하셨다던데.', '정말일까… 살아나신 걸까?'],
   ['삼천 명이 세례를 받았대!', '그들은 가진 것을 서로 나눈다더군.', '그 어부가 무리 앞에서 외쳤다지.', '이 이야기가 어디까지 갈까?'],
   ['그 어부, 로마까지 갔다지.', '반석 위에 교회를 세운다더니.', '우리도 그 길을 걸을 수 있을까.', '이야기는 아직 끝나지 않았어.'],
 ];
+// stage 2: 체포~부인(십자가 전) — 휘장 이야기는 아직 나오면 안 됨
+// stage 3: 십자가 사건(7번) 이후~빈 무덤(8번) 전 — 휘장 찢어짐은 여기서부터
 function storyStage() {
-  return nextNum <= 2 ? 0 : nextNum <= 5 ? 1 : nextNum <= 8 ? 2 : nextNum <= 11 ? 3 : nextNum <= 14 ? 4 : 5;
+  return nextNum <= 2 ? 0
+    : nextNum <= 5 ? 1
+    : nextNum <= 7 ? 2
+    : nextNum <= 8 ? 3
+    : nextNum <= 11 ? 4
+    : nextNum <= 14 ? 5
+    : 6;
 }
 const talkers = [];
 function addTalker(person, idx) {

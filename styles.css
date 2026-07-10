@@ -838,6 +838,38 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 #6e2013; }
   pointer-events: none;
 }
 
+/* 십자가의 어둠 절정 — 성전 휘장이 위에서 아래까지 찢어짐 (그림자 실루엣) */
+#veil-tear {
+  position: fixed;
+  inset: 0;
+  z-index: 19;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+#veil-tear.torn { opacity: 1; }
+.veil-shred {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 51%;
+  background:
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0) 0 6px, rgba(0, 0, 0, 0.3) 6px 8px),
+    linear-gradient(180deg, #1a1015 0%, #0a0709 55%, #05060c 100%);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+  transition: clip-path 1.8s cubic-bezier(0.5, 0, 0.25, 1), transform 1.8s cubic-bezier(0.5, 0, 0.25, 1);
+}
+.veil-shred-l { left: 0; }
+.veil-shred-r { right: 0; }
+#veil-tear.torn .veil-shred-l {
+  clip-path: polygon(0 0, 100% 0, 78% 100%, 0 100%);
+  transform: translateX(-42%);
+}
+#veil-tear.torn .veil-shred-r {
+  clip-path: polygon(22% 0, 100% 0, 100% 100%, 0 100%);
+  transform: translateX(42%);
+}
+
 /* 겟세마네: 감기는 눈꺼풀 — 위아래에서 닫혀 온다 */
 #lid-top, #lid-bottom {
   position: fixed;

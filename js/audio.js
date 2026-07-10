@@ -291,6 +291,9 @@ function gullCry(gain) {
 }
 
 // a rooster: two or three rough, falling crows
+// pitched to the score's own key (F4, the minor third above ROOT/D4) rather than
+// an arbitrary off-scale Hz value, so the crow lands in tune with the rest of the theme
+const ROOSTER_BASE = degToFreq('min', 1, 0); // F4 ≈ 349.23Hz
 function roosterCrow(gain = 0.14) {
   const t0 = ctx.currentTime;
   const notes = [1, 0.72, 0.9].slice(0, 2 + ((Math.random() * 2) | 0));
@@ -299,9 +302,9 @@ function roosterCrow(gain = 0.14) {
     const dur = 0.32 + Math.random() * 0.1;
     const o = ctx.createOscillator();
     o.type = 'sawtooth';
-    o.frequency.setValueAtTime(340 * rel, s);
-    o.frequency.exponentialRampToValueAtTime(520 * rel, s + dur * 0.35);
-    o.frequency.exponentialRampToValueAtTime(210 * rel, s + dur);
+    o.frequency.setValueAtTime(ROOSTER_BASE * rel, s);
+    o.frequency.exponentialRampToValueAtTime(ROOSTER_BASE * 1.529 * rel, s + dur * 0.35);
+    o.frequency.exponentialRampToValueAtTime(ROOSTER_BASE * 0.618 * rel, s + dur);
     const f = ctx.createBiquadFilter();
     f.type = 'bandpass';
     f.frequency.value = 900;
