@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>두유 노우 한메 타자교실? — 베드로 네 장면 타자 대결</title>
+<meta name="description" content="마태복음 4장·16장, 누가복음 22장, 요한복음 21장 — 베드로의 네 장면을 떨어지는 구절 타자로 새기는 대결 게임." />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⌨️</text></svg>" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=Nanum+Gothic+Coding:wght@400;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --red: #a8341f;
+    --red-bright: #e0473a;
+    --gold: #b8902e;
+    --gold-bright: #ffcf4d;
+    --win-blue-1: #2a6fd6;
+    --win-blue-2: #0c3c9c;
+    --win-face: #d7e3f7;
+    --ink: #182238;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    background: #0b1330; color: var(--ink);
+    font-family: 'Nanum Gothic Coding', monospace;
+    -webkit-text-size-adjust: 100%;
+    user-select: none;
+  }
+  h1, h2, .display-font { font-family: 'Do Hyeon', sans-serif; font-weight: 400; }
+
+  #app { position: fixed; inset: 0; }
+
+  .screen {
+    position: absolute; inset: 0; display: none;
+    align-items: center; justify-content: center;
+    flex-direction: column;
+  }
+  .screen.active { display: flex; }
+
+  /* ---------- retro window chrome ---------- */
+  .win98 {
+    width: min(94vw, 560px);
+    max-height: 92vh;
+    background: var(--win-face);
+    border: 3px solid #12213f;
+    border-radius: 6px;
+    box-shadow: 0 0 0 2px #6f92c9 inset, 8px 10px 0 rgba(0,0,0,0.35);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .win-titlebar {
+    background: linear-gradient(90deg, var(--win-blue-2), var(--win-blue-1));
+    color: #fff; font-family: 'Do Hyeon', sans-serif;
+    font-size: 15px; letter-spacing: 0.02em;
+    padding: 7px 10px; display: flex; align-items: center; justify-content: space-between;
+  }
+  .win-btns { display: flex; gap: 5px; }
+  .win-btns span {
+    width: 18px; height: 16px; background: #dfe8fb; color: #0c3c9c;
+    border: 1px solid #0c3c9c; border-radius: 2px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 11px; line-height: 1;
+  }
+  .win-btns .x { background: #ffd7d2; color: var(--red); }
+  .win-body {
+    padding: 20px 22px 24px;
+    overflow-y: auto;
+    text-align: center;
+  }
+  .win-body.center { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+
+  /* ---------- title screen ---------- */
+  .back-link {
+    position: absolute; top: 14px; left: 16px; z-index: 5;
+    color: #cfe0ff; text-decoration: none; font-size: 13px;
+    opacity: 0.8;
+  }
+  .back-link:hover { opacity: 1; }
+
+  #scr-title h1 {
+    font-size: clamp(24px, 5.4vw, 34px);
+    line-height: 1.25; margin: 4px 0 2px; color: var(--win-blue-2);
+  }
+  #scr-title h1 b { color: var(--red); }
+  .tag { font-size: 13px; color: #445; margin: 0 0 10px; }
+  .best-record {
+    font-size: 12px; color: var(--gold); background: #fff7e0;
+    border: 1px solid var(--gold); border-radius: 4px;
+    padding: 5px 8px; margin: 0 0 14px; display: inline-block;
+  }
+  .best-record:empty { display: none; }
+  .opt-group { margin-bottom: 14px; text-align: left; }
+  .opt-label { font-size: 12px; color: #445; margin: 0 0 6px; font-family: 'Do Hyeon', sans-serif; }
+  .opt-row { display: flex; gap: 6px; justify-content: center; }
+  .opt-btn {
+    flex: 1; font-family: 'Nanum Gothic Coding', monospace; font-weight: 700;
+    font-size: 13px; padding: 8px 6px; border-radius: 4px;
+    border: 2px solid #7c93bd; background: #fff; color: #345; cursor: pointer;
+  }
+  .opt-btn.active { background: var(--win-blue-1); color: #fff; border-color: var(--win-blue-2); }
+
+  .stage-preview {
+    list-style: none; margin: 0 0 16px; padding: 10px 12px;
+    background: #fff; border: 1px dashed #9ab; border-radius: 5px;
+    font-size: 12px; line-height: 1.9; color: #345; text-align: left;
+  }
+
+  .start-btn {
+    font-family: 'Do Hyeon', sans-serif; font-size: 18px;
+    padding: 11px 30px; border-radius: 5px; cursor: pointer;
+    background: linear-gradient(180deg, var(--red-bright), var(--red));
+    color: #fff; border: 2px solid #6f1c0f;
+    box-shadow: 0 3px 0 #5c1810;
+  }
+  .start-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #5c1810; }
+  .hint-line { font-size: 11px; color: #667; margin-top: 12px; }
+
+  .pnum { font-family: 'Do Hyeon', sans-serif; font-size: 26px; color: var(--win-blue-2); margin: 0; }
+
+  /* ---------- stage intro ---------- */
+  .stage-tag { font-size: 12px; color: var(--gold); font-family: 'Do Hyeon', sans-serif; margin: 0; }
+  #si-title { margin: 2px 0 0; color: var(--win-blue-2); }
+  .verse-ref { font-size: 12px; color: #667; margin: 0 0 4px; }
+  .verse-box {
+    font-size: 13px; line-height: 2; text-align: left; color: #223;
+    background: #fff; border: 1px solid #9ab; border-radius: 5px;
+    padding: 12px 14px; max-height: 30vh; overflow-y: auto;
+  }
+  .verse-box sup { color: var(--red); font-weight: 700; margin-right: 1px; }
+  .verse-box.done { background: #fff8e8; border-color: var(--gold); }
+  .countdown {
+    font-family: 'Do Hyeon', sans-serif; font-size: 44px; color: var(--red);
+    margin-top: 4px;
+  }
+
+  /* ---------- gameplay ---------- */
+  #scr-game { padding: 0; }
+  #game-bg { position: absolute; inset: 0; z-index: 0; transition: background 0.4s; }
+  .bg-0 { background: linear-gradient(#a9d8f2 0%, #d9ecdc 60%, #e9f3c9 100%); }
+  .bg-1 { background: linear-gradient(#7fa0c4 0%, #9db2b7 55%, #c7cfae 100%); }
+  .bg-2 { background: radial-gradient(circle at 50% 105%, #6a3418 0%, #201233 38%, #0a0f28 100%); }
+  .bg-3 { background: linear-gradient(#f6c79a 0%, #fbdcb3 45%, #fef2da 100%); }
+
+  #hud {
+    position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px; font-size: 13px; color: #fff;
+    background: rgba(10, 16, 40, 0.55);
+  }
+  .hud-left, .hud-right { display: flex; gap: 10px; align-items: center; }
+  #hud-lives { font-size: 16px; letter-spacing: 3px; color: var(--red-bright); }
+  #hud-combo { color: var(--gold-bright); font-weight: 700; }
+
+  #fall-field { position: relative; z-index: 1; flex: 1; overflow: hidden; width: 100%; }
+  #scr-game.active { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; }
+
+  #danger-line {
+    position: absolute; left: 0; right: 0; bottom: 66px;
+    border-top: 2px dashed rgba(224, 71, 58, 0.75); z-index: 1;
+  }
+  #danger-line::after {
+    content: '위험선'; position: absolute; right: 6px; top: -16px;
+    font-size: 10px; color: rgba(224, 71, 58, 0.85);
+  }
+
+  .phrase {
+    position: absolute; top: 0; left: 50%; max-width: min(88vw, 480px);
+    transform: translate(-50%, -40px);
+    background: rgba(255, 255, 255, 0.92);
+    border: 2px solid #223a5e; border-radius: 6px;
+    padding: 6px 12px; font-size: clamp(13px, 2.6vw, 17px);
+    font-weight: 700; text-align: center; white-space: normal;
+    box-shadow: 2px 3px 0 rgba(0,0,0,0.25);
+    pointer-events: none;
+  }
+  .phrase .matched { color: var(--red-bright); }
+  .phrase .rest { color: #223a5e; }
+  .phrase.cleared { opacity: 0; transform: translate(-50%, -60px) scale(1.15); transition: all 0.25s ease-out; }
+  .phrase.missed { opacity: 0; transition: opacity 0.2s; }
+
+  .popup {
+    position: absolute; z-index: 3; font-family: 'Do Hyeon', sans-serif;
+    color: var(--gold-bright); font-size: 15px; pointer-events: none;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.6);
+    animation: popup-float 0.7s ease-out forwards;
+  }
+  @keyframes popup-float { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-30px); } }
+
+  .shake { animation: shake-anim 0.28s; }
+  @keyframes shake-anim {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-8px); }
+    40% { transform: translateX(7px); }
+    60% { transform: translateX(-5px); }
+    80% { transform: translateX(4px); }
+  }
+
+  #typing-bar {
+    position: relative; z-index: 2; display: flex; align-items: center; gap: 8px;
+    padding: 10px 12px; background: rgba(10, 16, 40, 0.85);
+  }
+  #typing-caret { color: var(--gold-bright); font-size: 18px; font-weight: 700; }
+  #typing-input {
+    flex: 1; font-family: 'Nanum Gothic Coding', monospace; font-size: 17px;
+    padding: 8px 10px; border-radius: 4px; border: 2px solid #7c93bd;
+    background: #fff; color: #182238; outline: none;
+  }
+  #typing-input.mistype { border-color: var(--red-bright); background: #ffe9e6; }
+
+  #pause-overlay {
+    position: absolute; inset: 0; z-index: 5; display: flex;
+    align-items: center; justify-content: center; background: rgba(5, 8, 20, 0.72);
+  }
+  #pause-overlay.hidden { display: none; }
+
+  /* ---------- stage result / final ---------- */
+  #sr-headline, #final-headline { color: var(--win-blue-2); margin: 0; }
+  .stat-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; width: 100%;
+    margin: 4px 0 6px;
+  }
+  .stat-grid > div {
+    background: #fff; border: 1px solid #9ab; border-radius: 5px; padding: 8px 4px;
+  }
+  .stat-num { display: block; font-family: 'Do Hyeon', sans-serif; font-size: 19px; color: var(--red); }
+  .stat-lbl { display: block; font-size: 10px; color: #667; margin-top: 2px; }
+
+  #final-table { width: 100%; font-size: 12px; }
+  #final-table table { width: 100%; border-collapse: collapse; }
+  #final-table th, #final-table td { border: 1px solid #9ab; padding: 6px 4px; text-align: center; }
+  #final-table th { background: var(--win-blue-1); color: #fff; font-family: 'Do Hyeon', sans-serif; font-weight: 400; }
+  #final-table td.win { background: #fff3c4; font-weight: 700; color: var(--red); }
+  #final-record-note { font-size: 12px; color: var(--gold); margin: 8px 0; }
+  .final-btn-row { display: flex; gap: 10px; margin-top: 6px; }
+
+  .hidden { display: none !important; }
+
+  @media (max-width: 420px) {
+    .win-body { padding: 16px 14px 18px; }
+    .stage-preview { font-size: 11px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- title -->
+  <section id="scr-title" class="screen active">
+    <a class="back-link" href="./index.html">&larr; 지도로 돌아가기</a>
+    <div class="win98">
+      <div class="win-titlebar"><span>한메타자교실.exe</span><div class="win-btns"><span>_</span><span>&#9633;</span><span class="x">&times;</span></div></div>
+      <div class="win-body">
+        <h1>두유 노우<br /><b>한메 타자교실?</b></h1>
+        <p class="tag">베드로의 네 장면, 손끝으로 새기는 한글 타자 대결</p>
+        <div class="best-record" id="best-record"></div>
+
+        <div class="opt-group">
+          <p class="opt-label">모드 선택</p>
+          <div class="opt-row" id="mode-row">
+            <button data-mode="solo" class="opt-btn active">1인 연습</button>
+            <button data-mode="duo" class="opt-btn">2인 대결</button>
+          </div>
+        </div>
+        <div class="opt-group">
+          <p class="opt-label">난이도</p>
+          <div class="opt-row" id="diff-row">
+            <button data-diff="easy" class="opt-btn">쉬움</button>
+            <button data-diff="normal" class="opt-btn active">보통</button>
+            <button data-diff="hard" class="opt-btn">어려움</button>
+          </div>
+        </div>
+
+        <ol class="stage-preview">
+          <li>1. 부르심 — 마태복음 4:18-22</li>
+          <li>2. 고백 — 마태복음 16:13-18</li>
+          <li>3. 부인 — 누가복음 22:55-62</li>
+          <li>4. 회복 — 요한복음 21:15-17</li>
+        </ol>
+
+        <button id="btn-start" class="start-btn">▶ 시작하기</button>
+        <p class="hint-line">PC 키보드 권장 · 떨어지는 구절이 위험선에 닿기 전에 입력해서 지켜내세요</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- player ready (duo) -->
+  <section id="scr-playerready" class="screen">
+    <div class="win98"><div class="win-body center">
+      <p class="pnum" id="pready-num">PLAYER 1</p>
+      <p>키보드 앞에 앉으세요. 준비되면 시작!</p>
+      <button id="btn-pready-go" class="start-btn">▶ 시작</button>
+    </div></div>
+  </section>
+
+  <!-- stage intro -->
+  <section id="scr-stageintro" class="screen">
+    <div class="win98"><div class="win-body center">
+      <p class="stage-tag" id="si-tag">STAGE 1 / 4</p>
+      <h2 id="si-title"></h2>
+      <p class="verse-ref" id="si-ref"></p>
+      <div class="verse-box" id="si-verse"></div>
+      <div class="countdown" id="si-count">3</div>
+    </div></div>
+  </section>
+
+  <!-- gameplay -->
+  <section id="scr-game" class="screen">
+    <div id="game-bg" class="bg-0"></div>
+    <div id="hud">
+      <div class="hud-left">
+        <span id="hud-stage-lbl">1/4 부르심</span>
+        <span id="hud-player-lbl" class="hidden"></span>
+      </div>
+      <div id="hud-lives">♥♥♥</div>
+      <div class="hud-right">
+        <span>점수 <b id="hud-score">0</b></span>
+        <span id="hud-combo" class="hidden">콤보 &times;0</span>
+      </div>
+    </div>
+    <div id="fall-field">
+      <div id="danger-line"></div>
+    </div>
+    <div id="typing-bar">
+      <span id="typing-caret">&gt;</span>
+      <input id="typing-input" type="text" placeholder="여기에 입력하세요" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+    </div>
+    <div id="pause-overlay" class="hidden">
+      <div class="win98"><div class="win-body center">
+        <h2>잠시 멈춤</h2>
+        <p style="font-size:12px;color:#667;margin:0;">Esc 키로 다시 열 수 있어요</p>
+        <button id="btn-resume" class="start-btn">계속하기</button>
+      </div></div>
+    </div>
+  </section>
+
+  <!-- stage result -->
+  <section id="scr-stageresult" class="screen">
+    <div class="win98"><div class="win-body center">
+      <h2 id="sr-headline"></h2>
+      <div class="verse-box done" id="sr-verse"></div>
+      <div class="stat-grid">
+        <div><span class="stat-num" id="sr-score">0</span><span class="stat-lbl">점수</span></div>
+        <div><span class="stat-num" id="sr-cpm">0</span><span class="stat-lbl">타/분</span></div>
+        <div><span class="stat-num" id="sr-complete">0%</span><span class="stat-lbl">완료율</span></div>
+        <div><span class="stat-num" id="sr-combo">0</span><span class="stat-lbl">최대 콤보</span></div>
+      </div>
+      <button id="btn-next-stage" class="start-btn">다음 장면 ▶</button>
+    </div></div>
+  </section>
+
+  <!-- final -->
+  <section id="scr-final" class="screen">
+    <div class="win98"><div class="win-body center">
+      <h2 id="final-headline">완주!</h2>
+      <div id="final-table"></div>
+      <div id="final-record-note"></div>
+      <div class="final-btn-row">
+        <button id="btn-restart" class="start-btn">처음으로</button>
+      </div>
+    </div></div>
+  </section>
+
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---------------------------------------------------------------
+  // 본문: 개역개정 — 마 4:18-22 / 마 16:13-18 / 눅 22:55-62 / 요 21:15-17
+  // ---------------------------------------------------------------
+  var STAGES = [
+    {
+      title: '부르심 — 나를 따라오라',
+      ref: '마태복음 4:18-22',
+      verse: [
+        [18, '갈릴리 해변에 다니시다가 두 형제 곧 베드로라 하는 시몬과 그의 형제 안드레가 바다에 그물 던지는 것을 보시니 그들은 어부라'],
+        [19, '말씀하시되 나를 따라오라 내가 너희를 사람을 낚는 어부가 되게 하리라 하시니'],
+        [20, '그들이 곧 그물을 버려두고 예수를 따르니라'],
+        [21, '거기서 더 가시다가 다른 두 형제 곧 세베대의 아들 야고보와 그의 형제 요한이 그의 아버지 세베대와 함께 배에서 그물 깁는 것을 보시고 부르시니'],
+        [22, '그들이 곧 배와 아버지를 버려두고 예수를 따르니라']
+      ],
+      lines: [
+        '갈릴리 해변에 다니시다가',
+        '두 형제 곧 베드로라 하는 시몬과',
+        '그의 형제 안드레가',
+        '바다에 그물 던지는 것을 보시니',
+        '그들은 어부라',
+        '나를 따라오라',
+        '내가 너희를 사람을 낚는',
+        '어부가 되게 하리라',
+        '그들이 곧 그물을 버려두고',
+        '예수를 따르니라',
+        '세베대의 아들 야고보와',
+        '그의 형제 요한이',
+        '그물 깁는 것을 보시고 부르시니',
+        '그들이 곧 배와 아버지를 버려두고',
+        '예수를 따르니라'
+      ]
+    },
+    {
+      title: '고백 — 이 반석 위에',
+      ref: '마태복음 16:13-18',
+      verse: [
+        [13, '예수께서 빌립보 가이사랴 지방에 이르러 제자들에게 물어 이르시되 사람들이 인자를 누구라 하느냐'],
+        [14, '이르되 더러는 세례 요한, 더러는 엘리야, 어떤 이는 예레미야나 선지자 중의 하나라 하나이다'],
+        [15, '이르시되 너희는 나를 누구라 하느냐'],
+        [16, '시몬 베드로가 대답하여 이르되 주는 그리스도시요 살아 계신 하나님의 아들이시니이다'],
+        [17, '예수께서 대답하여 이르시되 바요나 시몬아 네가 복이 있도다 이를 네게 알게 한 이는 혈육이 아니요 하늘에 계신 내 아버지시니라'],
+        [18, '또 내가 네게 이르노니 너는 베드로라 내가 이 반석 위에 내 교회를 세우리니 음부의 권세가 이기지 못하리라']
+      ],
+      lines: [
+        '예수께서 빌립보 가이사랴 지방에 이르러',
+        '제자들에게 물어 이르시되',
+        '사람들이 인자를 누구라 하느냐',
+        '더러는 세례 요한,',
+        '더러는 엘리야,',
+        '어떤 이는 예레미야나 선지자 중의 하나라',
+        '이르시되 너희는 나를 누구라 하느냐',
+        '시몬 베드로가 대답하여 이르되',
+        '주는 그리스도시요',
+        '살아 계신 하나님의 아들이시니이다',
+        '바요나 시몬아 네가 복이 있도다',
+        '이를 네게 알게 한 이는 혈육이 아니요',
+        '하늘에 계신 내 아버지시니라',
+        '너는 베드로라',
+        '내가 이 반석 위에 내 교회를 세우리니',
+        '음부의 권세가 이기지 못하리라'
+      ]
+    },
+    {
+      title: '부인 — 닭 울기 전에',
+      ref: '누가복음 22:55-62',
+      verse: [
+        [55, '사람들이 뜰 가운데 불을 피우고 함께 앉았는지라 베드로도 그 가운데 앉았더니'],
+        [56, '한 여종이 베드로가 불빛을 향하여 앉은 것을 보고 주목하여 이르되 이 사람도 그와 함께 있었느니라 하니'],
+        [57, '베드로가 부인하여 이르되 여자여 나는 그를 알지 못하노라 하더라'],
+        [58, '조금 후에 다른 사람이 보고 이르되 너도 그 도당이라 하거늘 베드로가 이르되 이 사람아 나는 아니로라 하더라'],
+        [59, '한 시간쯤 있다가 또 한 사람이 장담하여 이르되 이는 갈릴리 사람이니 참으로 그와 함께 있었느니라 하니'],
+        [60, '베드로가 이르되 이 사람아 나는 네가 말하는 것이 무엇인지 알지 못하노라 하니 미처 말을 마치기 전에 닭이 곧 울더라'],
+        [61, '주께서 돌이켜 베드로를 보시니 베드로가 주의 말씀 곧 오늘 닭 울기 전에 네가 세 번 나를 부인하리라 하심이 생각나서'],
+        [62, '밖에 나가서 심히 통곡하니라']
+      ],
+      lines: [
+        '사람들이 뜰 가운데 불을 피우고',
+        '함께 앉았는지라',
+        '베드로도 그 가운데 앉았더니',
+        '한 여종이 베드로가 불빛을 향하여',
+        '앉은 것을 보고 주목하여 이르되',
+        '이 사람도 그와 함께 있었느니라',
+        '베드로가 부인하여 이르되',
+        '여자여 나는 그를 알지 못하노라',
+        '너도 그 도당이라',
+        '이 사람아 나는 아니로라',
+        '이는 갈릴리 사람이니',
+        '참으로 그와 함께 있었느니라',
+        '나는 네가 말하는 것이',
+        '무엇인지 알지 못하노라',
+        '미처 말을 마치기 전에',
+        '닭이 곧 울더라',
+        '주께서 돌이켜 베드로를 보시니',
+        '오늘 닭 울기 전에',
+        '네가 세 번 나를 부인하리라',
+        '밖에 나가서 심히 통곡하니라'
+      ]
+    },
+    {
+      title: '회복 — 내 양을 먹이라',
+      ref: '요한복음 21:15-17',
+      verse: [
+        [15, '그들이 조반 먹은 후에 예수께서 시몬 베드로에게 이르시되 요한의 아들 시몬아 네가 이 사람들보다 나를 더 사랑하느냐 하시니 이르되 주님 그러하나이다 내가 주님을 사랑하는 줄 주님께서 아시나이다 이르시되 내 어린 양을 먹이라 하시고'],
+        [16, '또 두 번째 이르시되 요한의 아들 시몬아 네가 나를 사랑하느냐 이르되 주님 그러하나이다 내가 주님을 사랑하는 줄 주님께서 아시나이다 이르시되 내 양을 치라 하시고'],
+        [17, '세 번째 이르시되 요한의 아들 시몬아 네가 나를 사랑하느냐 하시니 세 번째 네가 나를 사랑하느냐 하시므로 베드로가 근심하여 이르되 주님 모든 것을 아시오매 내가 주님을 사랑하는 줄 주님께서 아시나이다 이르시되 내 양을 먹이라']
+      ],
+      lines: [
+        '그들이 조반 먹은 후에',
+        '요한의 아들 시몬아',
+        '네가 이 사람들보다 나를 더 사랑하느냐',
+        '주님 그러하나이다',
+        '내가 주님을 사랑하는 줄',
+        '주님께서 아시나이다',
+        '내 어린 양을 먹이라',
+        '또 두 번째 이르시되',
+        '네가 나를 사랑하느냐',
+        '내 양을 치라',
+        '세 번째 이르시되',
+        '세 번째 네가 나를 사랑하느냐 하시므로',
+        '베드로가 근심하여 이르되',
+        '주님 모든 것을 아시오매',
+        '내 양을 먹이라'
+      ]
+    }
+  ];
+
+  var STAGE_MULT = [1.0, 1.05, 1.2, 1.08];
+  var LANES = [18, 50, 82];
+  var DANGER_OFFSET = 66;
+  var DIFF = {
+    easy:   { label: '쉬움',   fallSpeed: 40, spawnInterval: 2700, maxConcurrent: 2 },
+    normal: { label: '보통',   fallSpeed: 60, spawnInterval: 2150, maxConcurrent: 3 },
+    hard:   { label: '어려움', fallSpeed: 86, spawnInterval: 1700, maxConcurrent: 3 }
+  };
+  var BEST_KEY = 'hanme-typing-best-v1';
+
+  // ---------------- DOM shortcuts ----------------
+  function $(id) { return document.getElementById(id); }
+  function showScreen(id) {
+    var list = document.querySelectorAll('.screen');
+    for (var i = 0; i < list.length; i++) list[i].classList.remove('active');
+    $(id).classList.add('active');
+  }
+
+  // ---------------- audio (WebAudio, no assets) ----------------
+  var actx = null;
+  function getCtx() {
+    if (!actx) {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      actx = new AC();
+    }
+    if (actx.state === 'suspended') actx.resume();
+    return actx;
+  }
+  function beep(freq, dur, type, vol, delay) {
+    try {
+      var ctx = getCtx();
+      var t0 = ctx.currentTime + (delay || 0);
+      var osc = ctx.createOscillator();
+      var gain = ctx.createGain();
+      osc.type = type || 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(vol || 0.12, t0);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(t0); osc.stop(t0 + dur + 0.02);
+    } catch (e) { /* audio unavailable — silently skip */ }
+  }
+  function sfx(name) {
+    if (name === 'clear') { beep(880, 0.08, 'triangle', 0.12); beep(1320, 0.09, 'triangle', 0.1, 0.05); }
+    else if (name === 'miss') { beep(160, 0.28, 'sawtooth', 0.16); }
+    else if (name === 'stageclear') { [523, 659, 784, 1046].forEach(function (f, i) { beep(f, 0.16, 'square', 0.12, i * 0.12); }); }
+    else if (name === 'start') { beep(660, 0.09, 'square', 0.1); }
+  }
+
+  // ---------------- state ----------------
+  var state = {
+    mode: 'solo',
+    difficulty: 'normal',
+    players: [],
+    currentPlayerIndex: 0,
+    currentStage: 0
+  };
+
+  function mkPlayer(name) { return { name: name, results: [] }; }
+
+  // ---------------- title screen wiring ----------------
+  function wireOptRow(rowId, key, valueAttr) {
+    var row = $(rowId);
+    row.addEventListener('click', function (e) {
+      var btn = e.target.closest('.opt-btn');
+      if (!btn) return;
+      var siblings = row.querySelectorAll('.opt-btn');
+      for (var i = 0; i < siblings.length; i++) siblings[i].classList.remove('active');
+      btn.classList.add('active');
+      state[key] = btn.getAttribute(valueAttr);
+    });
+  }
+  wireOptRow('mode-row', 'mode', 'data-mode');
+  wireOptRow('diff-row', 'difficulty', 'data-diff');
+
+  function loadBest() {
+    try {
+      var raw = localStorage.getItem(BEST_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+  function saveBestIfBetter(totalScore, avgCpm) {
+    var best = loadBest();
+    if (!best || totalScore > best.score) {
+      best = { score: totalScore, cpm: avgCpm };
+      try { localStorage.setItem(BEST_KEY, JSON.stringify(best)); } catch (e) {}
+    }
+    return best;
+  }
+  function renderBest() {
+    var best = loadBest();
+    $('best-record').textContent = best ? ('나의 최고 기록 — 점수 ' + best.score + ' · ' + best.cpm + '타/분') : '';
+  }
+  renderBest();
+
+  $('btn-start').addEventListener('click', function () {
+    getCtx(); sfx('start');
+    state.players = state.mode === 'duo' ? [mkPlayer('PLAYER 1'), mkPlayer('PLAYER 2')] : [mkPlayer('PLAYER 1')];
+    state.currentPlayerIndex = 0;
+    if (state.mode === 'duo') showPlayerReady(0);
+    else { state.currentStage = 0; startStage(0); }
+  });
+
+  function showPlayerReady(idx) {
+    state.currentPlayerIndex = idx;
+    state.currentStage = 0;
+    $('pready-num').textContent = state.players[idx].name;
+    showScreen('scr-playerready');
+  }
+  $('btn-pready-go').addEventListener('click', function () { sfx('start'); startStage(0); });
+
+  // ---------------- verse rendering ----------------
+  function verseHTML(stage) {
+    return stage.verse.map(function (seg) {
+      return '<sup>' + seg[0] + '</sup>' + seg[1];
+    }).join(' ');
+  }
+
+  // ---------------- stage intro / countdown ----------------
+  var countdownTimer = null;
+  function startStage(stageIdx) {
+    state.currentStage = stageIdx;
+    var stage = STAGES[stageIdx];
+    $('si-tag').textContent = 'STAGE ' + (stageIdx + 1) + ' / ' + STAGES.length;
+    $('si-title').textContent = stage.title;
+    $('si-ref').textContent = stage.ref;
+    $('si-verse').innerHTML = verseHTML(stage);
+    showScreen('scr-stageintro');
+
+    var n = 3;
+    $('si-count').textContent = n;
+    clearInterval(countdownTimer);
+    countdownTimer = setInterval(function () {
+      n--;
+      if (n > 0) { $('si-count').textContent = n; }
+      else if (n === 0) { $('si-count').textContent = '시작!'; }
+      else {
+        clearInterval(countdownTimer);
+        showScreen('scr-game');
+        beginGameplay(stageIdx);
+      }
+    }, 700);
+  }
+
+  // ---------------- gameplay ----------------
+  var rt = null; // runtime state for current stage attempt
+
+  function heartsHTML(lives) {
+    var s = '';
+    for (var i = 0; i < 3; i++) s += (i < lives ? '&#9829;' : '&#9825;');
+    return s;
+  }
+
+  function updateHud() {
+    $('hud-score').textContent = rt.score;
+    $('hud-lives').innerHTML = heartsHTML(rt.lives);
+    var comboEl = $('hud-combo');
+    if (rt.combo > 1) {
+      comboEl.classList.remove('hidden');
+      comboEl.textContent = '콤보 ×' + rt.combo;
+    } else {
+      comboEl.classList.add('hidden');
+    }
+  }
+
+  function beginGameplay(stageIdx) {
+    var stage = STAGES[stageIdx];
+    var diff = DIFF[state.difficulty];
+    var field = $('fall-field');
+    var danger = $('danger-line');
+    // clear previous phrase elements but keep danger-line
+    Array.prototype.slice.call(field.querySelectorAll('.phrase, .popup')).forEach(function (n) { n.remove(); });
+
+    $('game-bg').className = 'bg-' + stageIdx;
+    $('hud-stage-lbl').textContent = (stageIdx + 1) + '/' + STAGES.length + ' ' + stage.title.split(' — ')[0];
+    var plabel = $('hud-player-lbl');
+    if (state.mode === 'duo') { plabel.classList.remove('hidden'); plabel.textContent = state.players[state.currentPlayerIndex].name; }
+    else { plabel.classList.add('hidden'); }
+
+    rt = {
+      stageIdx: stageIdx,
+      diff: diff,
+      queue: stage.lines.slice(),
+      total: stage.lines.length,
+      active: [],
+      lives: 3,
+      score: 0,
+      combo: 0,
+      maxCombo: 0,
+      cleared: 0,
+      totalClearedChars: 0,
+      spawnCounter: 0,
+      lastSpawnTime: 0,
+      lastFrame: 0,
+      pausedDuration: 0,
+      pauseStartedAt: 0,
+      paused: false,
+      startTime: performance.now(),
+      rafId: null,
+      dangerY: 0,
+      ended: false
+    };
+
+    danger.style.bottom = DANGER_OFFSET + 'px';
+    recomputeDangerY();
+    updateHud();
+
+    var input = $('typing-input');
+    input.value = '';
+    input.classList.remove('mistype');
+    input.oninput = handleInput;
+    setTimeout(function () { input.focus(); }, 30);
+
+    rt.rafId = requestAnimationFrame(gameLoop);
+  }
+
+  function recomputeDangerY() {
+    var field = $('fall-field');
+    rt.dangerY = field.clientHeight - DANGER_OFFSET - 20;
+  }
+
+  function gameLoop(ts) {
+    if (!rt || rt.ended) return;
+    if (rt.paused) { rt.rafId = requestAnimationFrame(gameLoop); return; }
+    if (!rt.lastFrame) rt.lastFrame = ts;
+    var dt = ts - rt.lastFrame;
+    rt.lastFrame = ts;
+
+    if (!rt.lastSpawnTime) rt.lastSpawnTime = ts;
+    if (rt.queue.length && rt.active.length < rt.diff.maxConcurrent && (ts - rt.lastSpawnTime) > rt.diff.spawnInterval) {
+      spawnPhrase();
+      rt.lastSpawnTime = ts;
+    }
+
+    var speed = rt.diff.fallSpeed * STAGE_MULT[rt.stageIdx];
+    for (var i = rt.active.length - 1; i >= 0; i--) {
+      var p = rt.active[i];
+      p.y += speed * (dt / 1000);
+      p.el.style.transform = 'translate(-50%, ' + p.y + 'px)';
+      if (p.y >= rt.dangerY) missPhrase(p);
+    }
+
+    if (rt.queue.length === 0 && rt.active.length === 0) { endStage(); return; }
+    if (rt.lives <= 0) { endStage(); return; }
+
+    rt.rafId = requestAnimationFrame(gameLoop);
+  }
+
+  function spawnPhrase() {
+    var text = rt.queue.shift();
+    var lane = LANES[rt.spawnCounter % LANES.length];
+    rt.spawnCounter++;
+    var el = document.createElement('div');
+    el.className = 'phrase';
+    el.style.left = lane + '%';
+    el.style.transform = 'translate(-50%, -40px)';
+    el.innerHTML = '<span class="matched"></span><span class="rest"></span>';
+    el.querySelector('.rest').textContent = text;
+    $('fall-field').appendChild(el);
+    rt.active.push({ text: text, y: -40, el: el, matchedLen: 0 });
+  }
+
+  function renderHighlights() {
+    for (var i = 0; i < rt.active.length; i++) {
+      var p = rt.active[i];
+      p.el.querySelector('.matched').textContent = p.text.slice(0, p.matchedLen);
+      p.el.querySelector('.rest').textContent = p.text.slice(p.matchedLen);
+    }
+  }
+
+  function showPopup(text, xPercent, y) {
+    var pop = document.createElement('div');
+    pop.className = 'popup';
+    pop.style.left = xPercent + '%';
+    pop.style.top = Math.max(0, y) + 'px';
+    pop.textContent = text;
+    $('fall-field').appendChild(pop);
+    setTimeout(function () { pop.remove(); }, 750);
+  }
+
+  function clearPhrase(p) {
+    var idx = rt.active.indexOf(p);
+    if (idx === -1) return;
+    rt.active.splice(idx, 1);
+    p.el.classList.add('cleared');
+    setTimeout(function () { p.el.remove(); }, 260);
+
+    rt.combo++;
+    rt.maxCombo = Math.max(rt.maxCombo, rt.combo);
+    var progress = Math.max(0, Math.min(1, p.y / rt.dangerY));
+    var pts = p.text.length * 15 + Math.round((1 - progress) * 200) + rt.combo * 20;
+    rt.score += pts;
+    rt.cleared++;
+    rt.totalClearedChars += p.text.length;
+    updateHud();
+    sfx('clear');
+    showPopup('+' + pts, parseFloat(p.el.style.left), p.y);
+  }
+
+  function missPhrase(p) {
+    var idx = rt.active.indexOf(p);
+    if (idx === -1) return;
+    rt.active.splice(idx, 1);
+    p.el.classList.add('missed');
+    setTimeout(function () { p.el.remove(); }, 220);
+    rt.lives--;
+    rt.combo = 0;
+    updateHud();
+    sfx('miss');
+    var field = $('fall-field');
+    field.classList.remove('shake'); void field.offsetWidth; field.classList.add('shake');
+  }
+
+  function handleInput() {
+    var input = $('typing-input');
+    var val = input.value;
+    if (!rt || rt.ended) return;
+    var candidates = rt.active.filter(function (p) { return val.length > 0 && p.text.indexOf(val) === 0; });
+    for (var i = 0; i < rt.active.length; i++) {
+      rt.active[i].matchedLen = candidates.indexOf(rt.active[i]) !== -1 ? val.length : 0;
+    }
+    renderHighlights();
+    input.classList.toggle('mistype', val.length > 0 && candidates.length === 0);
+
+    if (val.length > 0) {
+      var exact = null;
+      for (var j = 0; j < candidates.length; j++) { if (candidates[j].text === val) { exact = candidates[j]; break; } }
+      if (exact) {
+        clearPhrase(exact);
+        input.value = '';
+        input.classList.remove('mistype');
+      }
+    }
+  }
+
+  // ---------------- pause ----------------
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if (!$('scr-game').classList.contains('active') || !rt || rt.ended) return;
+    if (rt.paused) resumeGame(); else pauseGame();
+  });
+  function pauseGame() {
+    rt.paused = true;
+    rt.pauseStartedAt = performance.now();
+    $('pause-overlay').classList.remove('hidden');
+  }
+  function resumeGame() {
+    rt.paused = false;
+    rt.pausedDuration += performance.now() - rt.pauseStartedAt;
+    rt.lastFrame = 0;
+    $('pause-overlay').classList.add('hidden');
+    $('typing-input').focus();
+  }
+  $('btn-resume').addEventListener('click', resumeGame);
+
+  // ---------------- stage end / results ----------------
+  function endStage() {
+    if (!rt || rt.ended) return;
+    rt.ended = true;
+    cancelAnimationFrame(rt.rafId);
+    $('typing-input').oninput = null;
+
+    var elapsedMs = (performance.now() - rt.startTime) - rt.pausedDuration;
+    var elapsedMin = Math.max(elapsedMs / 60000, 0.05);
+    var cpm = Math.round(rt.totalClearedChars / elapsedMin);
+    var completion = Math.round((rt.cleared / rt.total) * 100);
+    var cleared = rt.cleared === rt.total;
+
+    var result = {
+      score: rt.score, cpm: cpm, completion: completion, maxCombo: rt.maxCombo,
+      cleared: cleared, elapsedMs: elapsedMs
+    };
+    state.players[state.currentPlayerIndex].results[rt.stageIdx] = result;
+
+    var stage = STAGES[rt.stageIdx];
+    $('sr-headline').textContent = cleared ? (stage.title + ' — 완주!') : (stage.title + ' — 여기까지');
+    $('sr-verse').innerHTML = verseHTML(stage);
+    $('sr-score').textContent = rt.score;
+    $('sr-cpm').textContent = cpm;
+    $('sr-complete').textContent = completion + '%';
+    $('sr-combo').textContent = rt.maxCombo;
+
+    if (cleared) sfx('stageclear');
+    showScreen('scr-stageresult');
+  }
+
+  $('btn-next-stage').addEventListener('click', function () {
+    var next = state.currentStage + 1;
+    if (next < STAGES.length) { startStage(next); }
+    else { finishPlayerRun(); }
+  });
+
+  function finishPlayerRun() {
+    if (state.mode === 'duo' && state.currentPlayerIndex === 0) {
+      showPlayerReady(1);
+    } else {
+      showFinal();
+    }
+  }
+
+  function totalsFor(player) {
+    var score = 0, cpmSum = 0, completionSum = 0, n = player.results.length;
+    player.results.forEach(function (r) {
+      if (!r) return;
+      score += r.score; cpmSum += r.cpm; completionSum += r.completion;
+    });
+    return {
+      score: score,
+      avgCpm: n ? Math.round(cpmSum / n) : 0,
+      avgCompletion: n ? Math.round(completionSum / n) : 0
+    };
+  }
+
+  function showFinal() {
+    if (state.mode === 'solo') {
+      var p = state.players[0];
+      var t = totalsFor(p);
+      $('final-headline').textContent = '완주! 총점 ' + t.score;
+      var rows = '<table><tr><th>장면</th><th>점수</th><th>타/분</th><th>완료율</th></tr>';
+      STAGES.forEach(function (s, i) {
+        var r = p.results[i] || { score: 0, cpm: 0, completion: 0 };
+        rows += '<tr><td>' + (i + 1) + '. ' + s.title.split(' — ')[0] + '</td><td>' + r.score + '</td><td>' + r.cpm + '</td><td>' + r.completion + '%</td></tr>';
+      });
+      rows += '</table>';
+      $('final-table').innerHTML = rows;
+      var best = saveBestIfBetter(t.score, t.avgCpm);
+      $('final-record-note').textContent = (t.score >= best.score) ? '새로운 최고 기록입니다! 🎉' : ('최고 기록 — 점수 ' + best.score + ' · ' + best.cpm + '타/분');
+    } else {
+      var p1 = state.players[0], p2 = state.players[1];
+      var t1 = totalsFor(p1), t2 = totalsFor(p2);
+      var winnerIsP1 = t1.score === t2.score ? (t1.avgCompletion >= t2.avgCompletion) : (t1.score > t2.score);
+      var winner = winnerIsP1 ? p1.name : p2.name;
+      $('final-headline').textContent = (t1.score === t2.score && t1.avgCompletion === t2.avgCompletion) ? '무승부!' : (winner + ' 승리! 🏆');
+
+      var rows = '<table><tr><th>장면</th><th>PLAYER 1</th><th>PLAYER 2</th></tr>';
+      STAGES.forEach(function (s, i) {
+        var r1 = p1.results[i] || { score: 0 };
+        var r2 = p2.results[i] || { score: 0 };
+        var c1 = r1.score >= r2.score ? ' class="win"' : '';
+        var c2 = r2.score > r1.score ? ' class="win"' : '';
+        rows += '<tr><td>' + (i + 1) + '. ' + s.title.split(' — ')[0] + '</td><td' + c1 + '>' + r1.score + '</td><td' + c2 + '>' + r2.score + '</td></tr>';
+      });
+      rows += '<tr><td><b>총점</b></td><td' + (winnerIsP1 ? ' class="win"' : '') + '><b>' + t1.score + '</b></td><td' + (!winnerIsP1 ? ' class="win"' : '') + '><b>' + t2.score + '</b></td></tr>';
+      rows += '</table>';
+      $('final-table').innerHTML = rows;
+      $('final-record-note').textContent = 'PLAYER 1 평균 ' + t1.avgCpm + '타/분 · PLAYER 2 평균 ' + t2.avgCpm + '타/분';
+    }
+    renderBest();
+    showScreen('scr-final');
+  }
+
+  $('btn-restart').addEventListener('click', function () {
+    showScreen('scr-title');
+  });
+
+  window.addEventListener('resize', function () { if (rt) recomputeDangerY(); });
+
+})();
+</script>
+</body>
+</html>
