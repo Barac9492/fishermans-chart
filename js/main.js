@@ -67,7 +67,9 @@ const ROME_LAND = [
 // a dock out to the night-fishing boat, and the strip of lake Peter is
 // given to walk across when he is called out onto it.
 const WALK_LINES = [
-  { a: [-24, -110], b: [-6, -118], width: 6.5 },   // Capernaum dock (site 9)
+  // 폭은 실제 널빤지 폭(pier(-22, -111, -6, -118, 2.2)의 2.2)에 살짝만 여유를 둔다 —
+  // 예전엔 6.5였는데, 널빤지 밖 물 위까지 걸을 수 있어서 "물 위를 걷는" 것처럼 보였다.
+  { a: [-24, -110], b: [-6, -118], width: 2.6 },   // Capernaum dock (site 9)
 ];
 // 물 위 걷기(3번): 배에서 내린 뒤에만 열리는 빛의 길. 배를 타고 나가야 밟을 수 있다.
 const WW_BOARD = { x: -24, z: -116 };   // 배에 오르는 물가
