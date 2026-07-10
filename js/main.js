@@ -123,7 +123,9 @@ scene.fog = new THREE.Fog(0xcdbf9a, 130, 340);
 const FOG_VIEWS = { street: { near: 130, far: 340 }, chart: { near: 700, far: 1500 } };
 
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.4, 1600);
-const cam = { yaw: 0, height: 5, dist: 11, smoothDist: 11, lastDrag: -10 };
+// 첫 시선은 인물·배·표지가 함께 읽히는 가까운 어깨너머 구도. 원경보다 디오라마의
+// 재질과 생활 소품을 먼저 보이게 해 초기 인상을 바꾼다.
+const cam = { yaw: 0, height: 4.25, dist: 9.25, smoothDist: 9.25, lastDrag: -10 };
 const CHART_CAM_POS = new THREE.Vector3(0, 360, 105);
 const CHART_LOOK_AT = new THREE.Vector3(0, 0, -25);
 const lookTarget = new THREE.Vector3(0, 1.7, -110);
@@ -350,8 +352,70 @@ function lambert(color, opts = {}) {
   return new THREE.MeshLambertMaterial({ color, ...opts });
 }
 
+// 자주 보이는 현무암·석회암·목재는 단색 블록 대신 작은 절차 텍스처를 공유한다.
+function makeMaterialTexture(size, paint) {
+  const [cv, ctx] = canvas2d(size, size);
+  paint(ctx, size);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 8;
+  return tex;
+}
+
+const basaltTex = makeMaterialTexture(256, (ctx, s) => {
+  ctx.fillStyle = '#2f2e2b'; ctx.fillRect(0, 0, s, s);
+  for (let y = 0; y < s; y += 27) {
+    const offset = (Math.floor(y / 27) % 2) * 18;
+    for (let x = -offset; x < s; x += 48) {
+      const w = 36 + Math.random() * 9, h = 20 + Math.random() * 5;
+      ctx.fillStyle = Math.random() < 0.5 ? '#3b3934' : '#272622';
+      ctx.fillRect(x + 2, y + 2, w, h);
+      ctx.strokeStyle = 'rgba(12,10,8,0.52)'; ctx.lineWidth = 2;
+      ctx.strokeRect(x + 2, y + 2, w, h);
+      ctx.fillStyle = 'rgba(228,217,184,0.075)'; ctx.fillRect(x + 4, y + 4, w - 4, 2);
+    }
+  }
+});
+const limestoneTex = makeMaterialTexture(256, (ctx, s) => {
+  ctx.fillStyle = '#dacda9'; ctx.fillRect(0, 0, s, s);
+  for (let y = 0; y < s; y += 34) {
+    const offset = (Math.floor(y / 34) % 2) * 24;
+    for (let x = -offset; x < s; x += 58) {
+      const w = 50 + Math.random() * 10, h = 28 + Math.random() * 4;
+      ctx.fillStyle = Math.random() < 0.48 ? '#e7dbb9' : '#d0bf94';
+      ctx.fillRect(x + 2, y + 2, w, h);
+      ctx.strokeStyle = 'rgba(116,96,66,0.18)'; ctx.lineWidth = 1.5;
+      ctx.strokeRect(x + 2, y + 2, w, h);
+    }
+  }
+  for (let i = 0; i < 130; i++) {
+    ctx.fillStyle = 'rgba(92,74,48,0.09)';
+    ctx.fillRect(Math.random() * s, Math.random() * s, 1 + Math.random() * 2, 1 + Math.random() * 2);
+  }
+});
+const woodTex = makeMaterialTexture(256, (ctx, s) => {
+  ctx.fillStyle = '#745338'; ctx.fillRect(0, 0, s, s);
+  for (let y = 0; y < s; y += 30) {
+    ctx.fillStyle = y % 60 ? '#815d3d' : '#66462e'; ctx.fillRect(0, y + 2, s, 26);
+    ctx.fillStyle = 'rgba(37,24,15,0.42)'; ctx.fillRect(0, y, s, 2);
+    for (let i = 0; i < 5; i++) {
+      ctx.fillStyle = 'rgba(236,194,123,0.12)';
+      ctx.fillRect(Math.random() * s, y + 7 + Math.random() * 15, 20 + Math.random() * 58, 1);
+    }
+  }
+});
+const MAT = {
+  basalt: new THREE.MeshStandardMaterial({ map: basaltTex, color: 0xffffff, roughness: 0.94, envMapIntensity: 0.25 }),
+  basaltLight: new THREE.MeshStandardMaterial({ map: basaltTex, color: 0xc7c0af, roughness: 0.92, envMapIntensity: 0.22 }),
+  limestone: new THREE.MeshStandardMaterial({ map: limestoneTex, color: 0xffffff, roughness: 0.89, envMapIntensity: 0.3 }),
+  limestoneShadow: new THREE.MeshStandardMaterial({ map: limestoneTex, color: 0xb7a477, roughness: 0.94, envMapIntensity: 0.2 }),
+  wood: new THREE.MeshStandardMaterial({ map: woodTex, color: 0xffffff, roughness: 0.76, envMapIntensity: 0.22 }),
+  woodDark: new THREE.MeshStandardMaterial({ map: woodTex, color: 0x72503a, roughness: 0.83, envMapIntensity: 0.18 }),
+};
+
 function box(w, h, d, color, x, y, z, parent = scene, shadow = true) {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), lambert(color));
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), color && color.isMaterial ? color : lambert(color));
   m.position.set(x, y, z);
   if (shadow) { m.castShadow = true; m.receiveShadow = true; }
   parent.add(m);
@@ -394,20 +458,41 @@ function groundLabel(text, x, z, rotY = 0, width = 40) {
   groundLabels.push(mesh); // 하늘에서 보기에서는 지도 지명답게 커진다
 }
 
-// 번호 원판 스프라이트 재질 — 다음 목적지(빨강)·대기(회색)·다녀간 곳(먹색) 세 벌
+// 번호 원판 스프라이트 재질 — 유광 UI 배지가 아니라, 금박 테가 박힌 모자이크 인장.
 function numberSpriteMat(n, bg) {
   const [cv, ctx] = canvas2d(128, 128);
+  ctx.fillStyle = 'rgba(0,0,0,0)';
+  ctx.fillRect(0, 0, 128, 128);
   ctx.beginPath();
-  ctx.arc(64, 64, 52, 0, Math.PI * 2);
+  ctx.arc(64, 64, 54, 0, Math.PI * 2);
+  ctx.fillStyle = '#caa64b';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(64, 64, 47, 0, Math.PI * 2);
   ctx.fillStyle = bg;
   ctx.fill();
-  ctx.lineWidth = 6;
-  ctx.strokeStyle = '#ece2c4';
+  // 테세라의 작은 불규칙을 남겨, 화면 가까이에서도 벡터 원처럼 보이지 않게 한다.
+  for (let i = 0; i < 42; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = 7 + Math.random() * 34;
+    const s = 1 + Math.random() * 2.4;
+    ctx.fillStyle = i % 3 ? 'rgba(255,241,193,0.13)' : 'rgba(37,27,19,0.16)';
+    ctx.fillRect(64 + Math.cos(a) * r - s / 2, 64 + Math.sin(a) * r - s / 2, s, s);
+  }
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = '#f1df9d';
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(64, 64, 57, 0, Math.PI * 2);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(45,35,21,0.72)';
   ctx.stroke();
   ctx.font = `600 60px 'Noto Serif KR', Georgia, serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#ece2c4';
+  ctx.fillStyle = '#fff4d2';
+  ctx.shadowColor = 'rgba(41,29,16,0.65)';
+  ctx.shadowBlur = 2;
   ctx.fillText(String(n), 64, 68);
   const tex = new THREE.CanvasTexture(cv);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -810,7 +895,7 @@ const seaFoam = (() => {
 })();
 
 
-// a scattering of dark basalt boulders around the lake shore
+// 호숫가의 현무암: 네모난 상자 대신 불규칙하게 닳은 돌들로 수면의 가장자리를 잡는다.
 {
   const geos = [];
   for (let i = 0; i < LAKE.length; i++) {
@@ -823,13 +908,18 @@ const seaFoam = (() => {
       const z = az + (bz - az) * t + rnd(-1.5, 1.5);
       if (!onHolyLand(x, z)) continue;
       const s = rnd(0.35, 0.75);
-      const g = new THREE.BoxGeometry(s, s * 0.7, s);
+      const g = new THREE.DodecahedronGeometry(s, 0);
+      g.scale(1.15, 0.62 + Math.random() * 0.18, 0.8 + Math.random() * 0.35);
       g.rotateY(Math.random() * Math.PI);
-      g.translate(x, s * 0.3, z);
+      g.translate(x, s * 0.38, z);
       geos.push(g);
     }
   }
-  if (geos.length) scene.add(new THREE.Mesh(mergeGeometries(geos, false), lambert(COLORS.basalt)));
+  if (geos.length) {
+    const rocks = new THREE.Mesh(mergeGeometries(geos, false), MAT.basalt);
+    rocks.castShadow = rocks.receiveShadow = true;
+    scene.add(rocks);
+  }
 }
 
 // 지도식 지명: 위치는 대략 맞게, 거리는 순례 지도답게 압축 — 하늘에서 보기(M)에서 특히 잘 읽힌다
@@ -1107,12 +1197,20 @@ for (let i = 0; i < 14; i++) {
 
 function basaltHouse(x, z, w = 3, d = 3, h = 2.4, rotY = 0) {
   const g = new THREE.Group();
-  const wallColor = Math.random() < 0.5 ? COLORS.basalt : COLORS.basaltLight;
-  const body = box(w, h, d, wallColor, 0, h / 2, 0, g);
+  const wallMat = Math.random() < 0.5 ? MAT.basalt : MAT.basaltLight;
+  const body = box(w, h, d, wallMat, 0, h / 2, 0, g);
   body.castShadow = true;
-  box(w + 0.3, 0.3, d + 0.3, 0x4a453e, 0, h + 0.15, 0, g); // 지붕 테 — 검은 상자로 안 보이게 밝게
+  // 층층이 쌓인 현무암 테와 갈대 덮개로 평평한 지붕의 두께를 만든다.
+  box(w + 0.34, 0.18, d + 0.34, MAT.basaltLight, 0, h + 0.09, 0, g);
+  box(w + 0.16, 0.12, d + 0.16, MAT.woodDark, 0, h + 0.24, 0, g, false);
+  for (let i = 0; i < 3; i++) box(w + 0.45 - i * 0.08, 0.07, d + 0.45 - i * 0.08, MAT.basalt, 0, h + 0.34 + i * 0.07, 0, g, false);
   box(0.7, 1.3, 0.15, 0x1c1a18, 0, 0.65, d / 2 + 0.06, g, false); // 문
-  box(0.9, 0.12, 0.2, 0xcabb98, 0, 1.38, d / 2 + 0.08, g, false); // 문 상인방(석회석)
+  box(0.92, 0.13, 0.2, MAT.limestone, 0, 1.38, d / 2 + 0.08, g, false);
+  for (const sx of [-0.48, 0.48]) box(0.13, 1.48, 0.18, MAT.limestoneShadow, sx, 0.74, d / 2 + 0.07, g, false);
+  const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.075, 8, 6), new THREE.MeshBasicMaterial({ color: 0xf3bf67 }));
+  lamp.material.color.multiplyScalar(2.2);
+  lamp.position.set(-w * 0.28, h * 0.62, d / 2 + 0.08);
+  g.add(lamp);
   // 창: 따뜻한 불빛 한 점 — 마을에 사람이 산다
   const winMat = new THREE.MeshBasicMaterial({ color: 0xe8c988 });
   winMat.color.multiplyScalar(2); // HDR 부스트 — 블룸용 (생성 시 1회)
@@ -1137,11 +1235,11 @@ for (const [x, z, w, d] of CAPERNAUM_HOUSES) basaltHouse(x, z, w, d, 2.2 + Math.
 // the synagogue: white limestone hall with a colonnaded porch
 {
   const sx = -6, sz = -150;
-  const hall = box(7, 4.2, 9, COLORS.limestone, sx, 2.1, sz);
+  const hall = box(7, 4.2, 9, MAT.limestone, sx, 2.1, sz);
   hall.castShadow = true;
-  box(7.5, 0.4, 9.5, COLORS.limestoneShadow, sx, 4.35, sz);
+  box(7.5, 0.4, 9.5, MAT.limestoneShadow, sx, 4.35, sz);
   for (let i = -2; i <= 2; i++) {
-    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 3.8, 10), lambert(COLORS.limestone));
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 3.8, 10), MAT.limestone);
     col.position.set(sx + i * 1.4, 1.9, sz - 4.6);
     col.castShadow = true;
     scene.add(col);
@@ -1161,27 +1259,48 @@ for (const [x, z, w, d] of CAPERNAUM_HOUSES) basaltHouse(x, z, w, d, 2.2 + Math.
 // Capernaum dock, out to the night-fishing boat (site 9)
 function pier(cx, cz, tx, tz, wide = 2.4) {
   const dx = tx - cx, dz = tz - cz, len = Math.hypot(dx, dz);
-  const deck = new THREE.Mesh(new THREE.BoxGeometry(len, 0.25, wide), lambert(COLORS.wood));
-  deck.position.set((cx + tx) / 2, -0.05, (cz + tz) / 2);
-  deck.rotation.y = -Math.atan2(dz, dx);
-  deck.castShadow = true;
-  scene.add(deck);
-  return deck;
+  const g = new THREE.Group();
+  g.position.set((cx + tx) / 2, -0.05, (cz + tz) / 2);
+  g.rotation.y = -Math.atan2(dz, dx);
+  for (let i = 0; i < 7; i++) {
+    const plank = box(len, 0.17, wide / 7 - 0.045, MAT.wood, 0, 0, -wide / 2 + (i + 0.5) * wide / 7, g);
+    plank.rotation.z = (Math.random() - 0.5) * 0.012;
+  }
+  for (const px of [-len * 0.38, len * 0.38]) for (const pz of [-wide * 0.38, wide * 0.38]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.15, 1.25, 7), MAT.woodDark);
+    post.position.set(px, -0.5, pz); post.castShadow = true; g.add(post);
+  }
+  scene.add(g);
+  return g;
 }
 pier(-22, -111, -6, -118, 2.2);
 
 function fishingBoat(x, z, rotY = 0) {
   const g = new THREE.Group();
-  const hull = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.7, 4.2), lambert(COLORS.wood));
-  hull.position.y = 0.35;
+  const hull = new THREE.Mesh(new THREE.CapsuleGeometry(0.82, 2.85, 6, 16), MAT.wood);
+  hull.rotation.x = Math.PI / 2;
+  hull.scale.y = 0.52;
+  hull.position.y = 0.28;
   hull.castShadow = true;
-  const bow = new THREE.Mesh(new THREE.ConeGeometry(0.85, 1.4, 4), lambert(COLORS.woodDark));
-  bow.rotation.x = -Math.PI / 2;
-  bow.rotation.y = Math.PI / 4;
-  bow.position.set(0, 0.35, 2.4);
-  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 3.2, 6), lambert(COLORS.woodDark));
-  mast.position.y = 2.1;
-  g.add(hull, bow, mast);
+  const well = new THREE.Mesh(new THREE.CapsuleGeometry(0.62, 2.48, 6, 16), MAT.woodDark);
+  well.rotation.x = Math.PI / 2; well.scale.y = 0.13; well.position.y = 0.72;
+  for (const sx of [-0.74, 0.74]) {
+    const rail = box(0.1, 0.16, 3.4, MAT.woodDark, sx, 0.77, 0, g);
+    rail.rotation.z = sx * 0.06;
+  }
+  for (const bz of [-0.82, 0, 0.82]) box(1.38, 0.09, 0.25, MAT.woodDark, 0, 0.86, bz, g, false);
+  const bow = new THREE.Mesh(new THREE.DodecahedronGeometry(0.5, 0), MAT.woodDark);
+  bow.scale.set(1, 0.6, 1.3); bow.position.set(0, 0.36, 2.22);
+  const stern = bow.clone(); stern.position.z = -2.22;
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.095, 3.45, 8), MAT.woodDark);
+  mast.position.y = 2.18;
+  const sailShape = new THREE.Shape();
+  sailShape.moveTo(0.12, 0); sailShape.lineTo(1.18, 0.16); sailShape.lineTo(0.12, 2.5); sailShape.closePath();
+  const sail = new THREE.Mesh(new THREE.ShapeGeometry(sailShape), new THREE.MeshStandardMaterial({ color: 0xe7dcc1, roughness: 0.94, side: THREE.DoubleSide, envMapIntensity: 0.14 }));
+  sail.position.set(0.02, 1.28, -0.04); sail.rotation.y = 0.1;
+  const rope = new THREE.Mesh(new THREE.TorusGeometry(0.38, 0.035, 6, 12), MAT.woodDark);
+  rope.rotation.x = Math.PI / 2; rope.position.set(-0.36, 0.9, -0.82);
+  g.add(hull, well, bow, stern, mast, sail, rope);
   g.position.set(x, 0, z);
   g.rotation.y = rotY;
   scene.add(g);
@@ -1198,6 +1317,90 @@ const wwFlag = new THREE.Mesh(
 );
 wwFlag.position.set(0, 3.4, 0);
 wwBoat.add(wwFlag);
+
+// 그물을 고치고 생선을 말리는 작은 작업장. 시작 순간부터 "빈 모래밭"이 아니라
+// 베드로가 막 떠나온 삶의 자리로 읽히게 한다. 전부 정적 메시라 프레임 비용은 없다.
+function fishingShoreSet(cx, cz, rotY = 0) {
+  const g = new THREE.Group();
+  g.position.set(cx, 0, cz);
+  g.rotation.y = rotY;
+
+  const basket = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.3, 0.62, 12, 1, true), MAT.wood);
+  basket.position.set(-0.8, 0.31, 0.24);
+  basket.castShadow = true;
+  const handle = new THREE.Mesh(new THREE.TorusGeometry(0.31, 0.035, 6, 12, Math.PI), MAT.woodDark);
+  handle.rotation.x = Math.PI / 2;
+  handle.position.set(-0.8, 0.62, 0.24);
+
+  const rack = new THREE.Group();
+  for (const rx of [-0.84, 0.84]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.075, 1.55, 7), MAT.woodDark);
+    post.position.set(rx, 0.78, 0);
+    post.rotation.z = rx * 0.1;
+    post.castShadow = true;
+    rack.add(post);
+  }
+  rack.add(box(2.05, 0.08, 0.08, MAT.woodDark, 0, 1.32, 0, rack, false));
+  for (const rx of [-0.55, -0.18, 0.2, 0.57]) {
+    const fish = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 6), lambert(0xb0b8ab));
+    fish.scale.set(0.65, 1.3, 1.6);
+    fish.position.set(rx, 1.02 + Math.random() * 0.08, 0.02);
+    rack.add(fish);
+  }
+  rack.position.set(0.55, 0, -0.68);
+
+  // 한 장의 그물에 매듭을 그려 얹는다. 가까이서도 실선이 보이지만 먼 거리에서는 투명하게 녹는다.
+  const [netCanvas, netCtx] = canvas2d(192, 192);
+  netCtx.clearRect(0, 0, 192, 192);
+  netCtx.strokeStyle = 'rgba(63,54,39,0.72)';
+  netCtx.lineWidth = 1.8;
+  for (let i = -192; i < 384; i += 18) {
+    netCtx.beginPath(); netCtx.moveTo(i, 0); netCtx.lineTo(i - 192, 192); netCtx.stroke();
+    netCtx.beginPath(); netCtx.moveTo(i, 0); netCtx.lineTo(i + 192, 192); netCtx.stroke();
+  }
+  const netTex = new THREE.CanvasTexture(netCanvas);
+  netTex.colorSpace = THREE.SRGBColorSpace;
+  const net = new THREE.Mesh(
+    new THREE.PlaneGeometry(2.8, 2.2),
+    new THREE.MeshBasicMaterial({ map: netTex, transparent: true, opacity: 0.76, depthWrite: false, side: THREE.DoubleSide })
+  );
+  net.rotation.x = -Math.PI / 2.18;
+  net.rotation.z = -0.16;
+  net.position.set(1.15, 0.25, 0.52);
+
+  const coil = new THREE.Mesh(new THREE.TorusGeometry(0.58, 0.055, 6, 20), MAT.woodDark);
+  coil.rotation.x = Math.PI / 2;
+  coil.position.set(-0.1, 0.1, 0.9);
+  g.add(basket, handle, rack, net, coil);
+  scene.add(g);
+  return g;
+}
+fishingShoreSet(-35.5, -114.6, -0.3);
+fishingShoreSet(-20.4, -108.6, 0.65);
+
+// 얕은 물가의 갈대는 낮은 십자 쿼드 하나로 묶는다. 바람 애니메이션을 더하지 않아도
+// 호수와 육지의 실루엣 사이에 필요한 중간 밀도를 준다.
+function reedBed(cx, cz, count = 18) {
+  const geos = [];
+  for (let i = 0; i < count; i++) {
+    const x = cx + rnd(-2.2, 2.2), z = cz + rnd(-1.2, 1.2);
+    if (!onHolyLand(x, z)) continue;
+    const h = rnd(0.5, 1.15);
+    for (const ry of [0, Math.PI / 2]) {
+      const blade = new THREE.PlaneGeometry(0.08, h);
+      blade.rotateY(ry + rnd(-0.28, 0.28));
+      blade.rotateZ(rnd(-0.16, 0.16));
+      blade.translate(x, h / 2, z);
+      geos.push(blade);
+    }
+  }
+  if (geos.length) scene.add(new THREE.Mesh(
+    mergeGeometries(geos, false),
+    new THREE.MeshLambertMaterial({ color: 0x667b54, side: THREE.DoubleSide })
+  ));
+}
+reedBed(-27, -113, 24);
+reedBed(-24, -145, 22);
 
 // 빛의 길: 배에서 내려 표지까지, 물 위에 떠오르는 반투명 띠 (열렸을 때만 보인다)
 const lightPath = (() => {
@@ -1247,7 +1450,7 @@ const lightPath = (() => {
 
 function wallSegment(ax, az, bx, bz, h = 7) {
   const len = Math.hypot(bx - ax, bz - az);
-  const wall = new THREE.Mesh(new THREE.BoxGeometry(len, h, 1.4), lambert(COLORS.limestoneShadow));
+  const wall = new THREE.Mesh(new THREE.BoxGeometry(len, h, 1.4), MAT.limestoneShadow);
   wall.position.set((ax + bx) / 2, h / 2, (az + bz) / 2);
   wall.rotation.y = -Math.atan2(bz - az, bx - ax);
   wall.castShadow = wall.receiveShadow = true;
@@ -1257,7 +1460,7 @@ function wallSegment(ax, az, bx, bz, h = 7) {
   return wall;
 }
 function tower(x, z, h = 9) {
-  const t = new THREE.Mesh(new THREE.CylinderGeometry(2, 2.2, h, 10), lambert(COLORS.limestone));
+  const t = new THREE.Mesh(new THREE.CylinderGeometry(2, 2.2, h, 10), MAT.limestone);
   t.position.set(x, h / 2, z);
   t.castShadow = t.receiveShadow = true;
   scene.add(t);
@@ -1435,28 +1638,41 @@ tower(0, 90, 8);
 const markers = SITES.map((site, i) => {
   const g = new THREE.Group();
   const ring = new THREE.Mesh(
-    new THREE.RingGeometry(1.7, 2.3, 28),
-    new THREE.MeshBasicMaterial({ color: COLORS.red, transparent: true, opacity: 0.85, side: THREE.DoubleSide })
+    new THREE.RingGeometry(1.5, 2.45, 32),
+    new THREE.MeshBasicMaterial({ color: COLORS.goldBright, transparent: true, opacity: 0.72, side: THREE.DoubleSide })
   );
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = 0.18;
-  const pinMat = new THREE.MeshPhongMaterial({ color: COLORS.red, emissive: 0x3a0e08, shininess: 60 });
-  const cone = new THREE.Mesh(new THREE.ConeGeometry(0.85, 2.2, 12), pinMat);
-  cone.rotation.x = Math.PI;
-  cone.position.y = 2.5;
-  const ball = new THREE.Mesh(new THREE.SphereGeometry(1.05, 14, 12), pinMat);
-  ball.position.y = 4.05;
-  ball.castShadow = true;
+  const pinMat = new THREE.MeshStandardMaterial({
+    color: COLORS.red, emissive: 0x3a0e08, emissiveIntensity: 0.55,
+    roughness: 0.38, metalness: 0.14, envMapIntensity: 0.75,
+  });
+  const brass = new THREE.MeshStandardMaterial({ color: COLORS.goldBright, roughness: 0.3, metalness: 0.82, envMapIntensity: 1.1 });
+  // 지도 핀 대신, 발밑의 금 테와 위의 보석 등불로 이루어진 순례 표지.
+  const plinth = new THREE.Mesh(new THREE.CylinderGeometry(0.78, 0.98, 0.34, 10), MAT.basalt);
+  plinth.position.y = 0.17;
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.22, 2.35, 10), brass);
+  shaft.position.y = 1.35;
+  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.07, 7, 14), brass);
+  collar.rotation.x = Math.PI / 2;
+  collar.position.y = 2.12;
+  const lantern = new THREE.Mesh(new THREE.IcosahedronGeometry(0.7, 2), pinMat);
+  lantern.position.y = 2.75;
+  const halo = new THREE.Mesh(new THREE.TorusGeometry(0.88, 0.055, 6, 18), brass);
+  halo.rotation.x = Math.PI / 2;
+  halo.position.y = 2.75;
+  halo.rotation.z = Math.PI / 6;
+  lantern.castShadow = shaft.castShadow = plinth.castShadow = true;
   const spriteMats = {
     red: numberSpriteMat(site.num, '#a8341f'),
     gray: numberSpriteMat(site.num, '#8b8478'),
     ink: numberSpriteMat(site.num, '#3b352c'),
   };
   const sprite = new THREE.Sprite(spriteMats.gray);
-  sprite.scale.set(3.6, 3.6, 1);
-  sprite.position.y = 6.6;
+  sprite.scale.set(2.75, 2.75, 1);
+  sprite.position.y = 4.65;
   const pin = new THREE.Group();
-  pin.add(cone, ball);
+  pin.add(plinth, shaft, collar, lantern, halo);
   g.add(ring, pin, sprite);
   g.position.set(site.pos.x, 0, site.pos.z);
   scene.add(g);
@@ -4917,8 +5133,8 @@ function animate() {
     }
   }
 
-  const spriteScale = chartView ? 12 : 3.6;
-  const spriteY = chartView ? 16 : 6.6;
+  const spriteScale = chartView ? 10.5 : 2.9;
+  const spriteY = chartView ? 13 : 4.75;
   for (const m of markers) {
     // 다음 목적지만 붉게 살아 있고, 나머지 미방문지는 무채색으로 기다린다
     const desired = m.visited ? 'done' : (target === m ? 'target' : 'wait');
