@@ -1542,8 +1542,10 @@ tower(0, 90, 8);
 }
 
 // the garden tomb (site 8) — a rock-cut facade with the stone rolled aside
+// kept well north of Golgotha (gx=-40, gz=116) so it's out of sight while
+// standing near the crosses, preserving the "멀찍이서" distance of the crucifixion scene
 {
-  const tx = -38, tz = 128;
+  const tx = -38, tz = 148;
   const rock = box(5, 3.2, 3, 0x9a8d6e, tx, 1.6, tz);
   rock.castShadow = rock.receiveShadow = true;
   const doorway = box(1.1, 1.6, 0.3, 0x110f0d, tx, 0.8, tz + 1.55, scene, false);
@@ -1919,7 +1921,7 @@ const ghostJohn = new THREE.Group();
   ghostJohn.visible = false;
   scene.add(ghostJohn);
 }
-const TOMB_MOUTH = { x: -37, z: 131 };
+const TOMB_MOUTH = { x: -37, z: 151 };
 
 /* ---------------- 길 위의 생명: 양 떼·목자·낙타·호수의 배·성벽 횃불 ---------------- */
 
@@ -3545,13 +3547,14 @@ function startEclipse() {
   if (state.view === 'chart') toggleView();
   state.modal = true;
   veilTearEl.classList.remove('torn');
+  // 복음의 중심 사건이니 서두르지 않는다 — 각 대사 사이에 충분히 머무른다
   eclipse = {
-    t: 0, dur: 16,
+    t: 0, dur: 26,
     caps: [
-      { at: 1.0, text: '정오였다. 그런데 온 땅에 어둠이 내렸다. (눅 23:44)' },
-      { at: 5.2, text: '세 시간이 지났을 때, 크게 외치는 소리가 들렸다.', cry: true },
-      { at: 8.8, text: '"다 이루었다." (요 19:30)' },
-      { at: 12.2, text: '그 순간, 성전 휘장이 위에서 아래까지 찢어졌다.', veil: true },
+      { at: 1.2, text: '정오였다. 그런데 온 땅에 어둠이 내렸다. (눅 23:44)' },
+      { at: 7.0, text: '세 시간이 지났을 때, 크게 외치는 소리가 들렸다.', cry: true },
+      { at: 13.5, text: '"다 이루었다." (요 19:30)' },
+      { at: 20.0, text: '그 순간, 성전 휘장이 위에서 아래까지 찢어졌다.', veil: true },
     ],
   };
   voyageCaptionEl.textContent = '';
@@ -3562,8 +3565,8 @@ function skipEclipse() {
 }
 function updateEclipse(dt) {
   eclipse.t += dt;
-  const fadeIn = Math.min(1, eclipse.t / 2.5);
-  const fadeOut = Math.max(0, 1 - Math.max(0, eclipse.t - (eclipse.dur - 1.2)) / 1.2);
+  const fadeIn = Math.min(1, eclipse.t / 4);
+  const fadeOut = Math.max(0, 1 - Math.max(0, eclipse.t - (eclipse.dur - 2.2)) / 2.2);
   eclipseEl.style.opacity = String(0.93 * fadeIn * fadeOut);
   while (eclipse.caps.length && eclipse.t >= eclipse.caps[0].at) {
     const c = eclipse.caps.shift();
