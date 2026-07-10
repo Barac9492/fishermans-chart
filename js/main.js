@@ -347,6 +347,13 @@ function canvas2d(w, h) {
 function addCollider(cx, cz, w, d, pad = 0.6) {
   colliders.push({ x0: cx - w / 2 - pad, x1: cx + w / 2 + pad, z0: cz - d / 2 - pad, z1: cz + d / 2 + pad });
 }
+// collide()는 회전을 모르는 축맞춤 상자만 다룬다 — rotY로 돌아간 벽·집은 그 회전을 감싸는
+// 축맞춤 상자(AABB)로 등록해야, 실제 발자국과 다른 곳에 판정이 생기는(뚫고 지나가거나,
+// 아무것도 없는데 막히는) 일이 없다.
+function addRotatedCollider(cx, cz, w, d, rotY, pad = 0.6) {
+  const c = Math.abs(Math.cos(rotY)), s = Math.abs(Math.sin(rotY));
+  addCollider(cx, cz, w * c + d * s, w * s + d * c, pad);
+}
 
 function lambert(color, opts = {}) {
   return new THREE.MeshLambertMaterial({ color, ...opts });
@@ -1221,7 +1228,7 @@ function basaltHouse(x, z, w = 3, d = 3, h = 2.4, rotY = 0) {
   g.position.set(x, 0, z);
   g.rotation.y = rotY;
   scene.add(g);
-  addCollider(x, z, w, d);
+  addRotatedCollider(x, z, w, d, rotY);
   occluders.push(body);
   return g;
 }
@@ -1450,12 +1457,13 @@ const lightPath = (() => {
 
 function wallSegment(ax, az, bx, bz, h = 7) {
   const len = Math.hypot(bx - ax, bz - az);
+  const rotY = -Math.atan2(bz - az, bx - ax);
   const wall = new THREE.Mesh(new THREE.BoxGeometry(len, h, 1.4), MAT.limestoneShadow);
   wall.position.set((ax + bx) / 2, h / 2, (az + bz) / 2);
-  wall.rotation.y = -Math.atan2(bz - az, bx - ax);
+  wall.rotation.y = rotY;
   wall.castShadow = wall.receiveShadow = true;
   scene.add(wall);
-  addCollider((ax + bx) / 2, (az + bz) / 2, len, 1.4, 0.3);
+  addRotatedCollider((ax + bx) / 2, (az + bz) / 2, len, 1.4, rotY, 0.3);
   occluders.push(wall);
   return wall;
 }
@@ -5472,6 +5480,8 @@ window.__qa = {
     };
   },
   get keys() { return keys; },
+  get colliders() { return colliders.map((c) => ({ ...c })); },
+  isWalkable(x, z) { return isWalkable(x, z); },
   // 테스트 전용: 사전 연출(그물 던지기·대화)을 건너뛰고 카드를 바로 연다.
   // openCard() 자체는 실제 플레이와 같은 경로이므로 카드 이후 로직(말씀 새기기 등) 검증에 쓴다.
   openMarker(id, autoChart = false) {
