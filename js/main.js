@@ -2814,6 +2814,7 @@ function lockedToast() {
 }
 
 let activeSeal = null; // { marker, attempts }
+let imePendingSubmit = false; // 한글 IME: 엔터로 조합을 확정하는 중이면 확정 후에 제출한다
 
 function normalizeAnswer(s) {
   return s.replace(/\s+/g, '').replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?]/g, '').trim();
@@ -2877,6 +2878,7 @@ function openCard(marker) {
   if (firstVisit) {
     // 말씀 새기기 UI 활성화 (아직 지도에 기록하지 않음)
     activeSeal = { marker, attempts: 0 };
+    imePendingSubmit = false;
     cardSealBox.classList.remove('hidden');
     
     const seal = s.seal;
@@ -2946,8 +2948,20 @@ function submitSeal() {
 
 sealSubmit.addEventListener('click', submitSeal);
 sealInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    e.preventDefault();
+  if (e.key !== 'Enter') return;
+  // 한글 IME(특히 모바일 키보드): 엔터/확인 키는 조합 중인 마지막 글자를 확정한다.
+  // 이때 keydown의 값에는 아직 그 글자가 없어(isComposing/keyCode 229), 그대로 검사하면
+  // 정답도 오답 처리된다. 조합 확정을 기다렸다가 compositionend에서 제출한다 — 한 번에 통과.
+  if (e.isComposing || e.keyCode === 229) {
+    imePendingSubmit = true;
+    return; // preventDefault 하지 않는다 — IME가 마지막 글자를 확정하게 둔다
+  }
+  e.preventDefault();
+  submitSeal();
+});
+sealInput.addEventListener('compositionend', () => {
+  if (imePendingSubmit) {
+    imePendingSubmit = false;
     submitSeal();
   }
 });
@@ -3128,7 +3142,17 @@ function buildSouvenir(wrap, { forceRebuild = false } = {}) {
     refreshImg();
   };
   nameBtn.addEventListener('click', engrave);
-  nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); engrave(); } });
+  // 한글 IME: 조합 중인(엔터로 확정하는) 이름이 잘리지 않도록 확정 후에 새긴다
+  let namePendingEngrave = false;
+  nameInput.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    if (e.isComposing || e.keyCode === 229) { namePendingEngrave = true; return; }
+    e.preventDefault();
+    engrave();
+  });
+  nameInput.addEventListener('compositionend', () => {
+    if (namePendingEngrave) { namePendingEngrave = false; engrave(); }
+  });
   nameRow.append(nameInput, nameBtn);
   const btn = document.createElement('button');
   btn.className = 'souvenir-btn';
