@@ -34,9 +34,6 @@ const COLORS = {
   sea: 0x4f7a85,
   lake: 0x5a9088,
   road: 0xb7a077,
-  oliveLeaf: 0x7c8a5a,
-  oliveTrunk: 0x5c4a36,
-  palmTrunk: 0x8a6f4d,
   wood: 0x7a5c3e,
   woodDark: 0x5a4128,
   robe: 0x8a7050,
@@ -70,7 +67,9 @@ const ROME_LAND = [
 // a dock out to the night-fishing boat, and the strip of lake Peter is
 // given to walk across when he is called out onto it.
 const WALK_LINES = [
-  { a: [-24, -110], b: [-6, -118], width: 6.5 },   // Capernaum dock (site 9)
+  // 폭은 실제 널빤지 폭(pier(-22, -111, -6, -118, 2.2)의 2.2)에 살짝만 여유를 둔다 —
+  // 예전엔 6.5였는데, 널빤지 밖 물 위까지 걸을 수 있어서 "물 위를 걷는" 것처럼 보였다.
+  { a: [-24, -110], b: [-6, -118], width: 2.6 },   // Capernaum dock (site 9)
 ];
 // 물 위 걷기(3번): 배에서 내린 뒤에만 열리는 빛의 길. 배를 타고 나가야 밟을 수 있다.
 const WW_BOARD = { x: -24, z: -116 };   // 배에 오르는 물가
@@ -412,6 +411,28 @@ const woodTex = makeMaterialTexture(256, (ctx, s) => {
     }
   }
 });
+// 나무껍질: 세로 섬유질 줄무늬 + 옹이 자국 (원기둥에 세로로 한 번 감긴다)
+const barkTex = makeMaterialTexture(128, (ctx, s) => {
+  ctx.fillStyle = '#3f3223'; ctx.fillRect(0, 0, s, s);
+  for (let x = 0; x < s; x += 6) {
+    const w = 3 + Math.random() * 4;
+    ctx.fillStyle = Math.random() < 0.5 ? '#4c3d29' : '#332819';
+    ctx.fillRect(x, 0, w, s);
+  }
+  for (let i = 0; i < 90; i++) {
+    ctx.fillStyle = 'rgba(18,12,7,0.4)';
+    ctx.fillRect(Math.random() * s, Math.random() * s, 1 + Math.random(), 3 + Math.random() * 7);
+  }
+});
+// 잎사귀: 뭉친 잎 무더기의 명암 얼룩 (구체에 감긴다)
+const leafTex = makeMaterialTexture(128, (ctx, s) => {
+  ctx.fillStyle = '#5d6a42'; ctx.fillRect(0, 0, s, s);
+  for (let i = 0; i < 480; i++) {
+    ctx.fillStyle = Math.random() < 0.5 ? 'rgba(150,163,108,0.5)' : 'rgba(58,68,40,0.42)';
+    const r = 1.4 + Math.random() * 2.2;
+    ctx.beginPath(); ctx.arc(Math.random() * s, Math.random() * s, r, 0, Math.PI * 2); ctx.fill();
+  }
+});
 const MAT = {
   basalt: new THREE.MeshStandardMaterial({ map: basaltTex, color: 0xffffff, roughness: 0.94, envMapIntensity: 0.25 }),
   basaltLight: new THREE.MeshStandardMaterial({ map: basaltTex, color: 0xc7c0af, roughness: 0.92, envMapIntensity: 0.22 }),
@@ -419,6 +440,9 @@ const MAT = {
   limestoneShadow: new THREE.MeshStandardMaterial({ map: limestoneTex, color: 0xb7a477, roughness: 0.94, envMapIntensity: 0.2 }),
   wood: new THREE.MeshStandardMaterial({ map: woodTex, color: 0xffffff, roughness: 0.76, envMapIntensity: 0.22 }),
   woodDark: new THREE.MeshStandardMaterial({ map: woodTex, color: 0x72503a, roughness: 0.83, envMapIntensity: 0.18 }),
+  bark: new THREE.MeshStandardMaterial({ map: barkTex, color: 0xffffff, roughness: 0.95, envMapIntensity: 0.16 }),
+  palmBark: new THREE.MeshStandardMaterial({ map: barkTex, color: 0xd4b483, roughness: 0.88, envMapIntensity: 0.18 }),
+  leaf: new THREE.MeshStandardMaterial({ map: leafTex, color: 0xffffff, roughness: 0.8, envMapIntensity: 0.22 }),
 };
 
 function box(w, h, d, color, x, y, z, parent = scene, shadow = true) {
@@ -1142,14 +1166,14 @@ const swayers = []; // 바람에 흔들리는 나무들
 function tree(x, z, s = 1, kind = 'olive') {
   const g = new THREE.Group();
   swayers.push({ g, ph: Math.random() * 6 });
-  const trunkColor = kind === 'palm' ? COLORS.palmTrunk : COLORS.oliveTrunk;
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.13 * s, 0.22 * s, 1.3 * s, 12), lambert(trunkColor));
+  const barkMat = kind === 'palm' ? MAT.palmBark : MAT.bark;
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.13 * s, 0.22 * s, 1.3 * s, 12), barkMat);
   trunk.position.y = 0.65 * s;
   trunk.castShadow = true;
   g.add(trunk);
   if (kind === 'palm') {
     for (let i = 0; i < 6; i++) {
-      const frond = new THREE.Mesh(new THREE.ConeGeometry(0.16 * s, 1.7 * s, 8), lambert(COLORS.oliveLeaf));
+      const frond = new THREE.Mesh(new THREE.ConeGeometry(0.16 * s, 1.7 * s, 10), MAT.leaf);
       frond.position.y = 1.3 * s;
       frond.rotation.z = Math.PI / 2.3;
       frond.rotation.y = (i / 6) * Math.PI * 2;
@@ -1157,7 +1181,7 @@ function tree(x, z, s = 1, kind = 'olive') {
       g.add(frond);
     }
   } else {
-    const fol = new THREE.Mesh(new THREE.SphereGeometry(0.85 * s, 18, 14), new THREE.MeshLambertMaterial({ color: COLORS.oliveLeaf }));
+    const fol = new THREE.Mesh(new THREE.SphereGeometry(0.85 * s, 18, 14), MAT.leaf);
     fol.position.y = 1.55 * s;
     fol.scale.y = 0.85;
     fol.castShadow = true;
@@ -1246,7 +1270,7 @@ for (const [x, z, w, d] of CAPERNAUM_HOUSES) basaltHouse(x, z, w, d, 2.2 + Math.
   hall.castShadow = true;
   box(7.5, 0.4, 9.5, MAT.limestoneShadow, sx, 4.35, sz);
   for (let i = -2; i <= 2; i++) {
-    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 3.8, 10), MAT.limestone);
+    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 3.8, 16), MAT.limestone);
     col.position.set(sx + i * 1.4, 1.9, sz - 4.6);
     col.castShadow = true;
     scene.add(col);
@@ -1274,7 +1298,7 @@ function pier(cx, cz, tx, tz, wide = 2.4) {
     plank.rotation.z = (Math.random() - 0.5) * 0.012;
   }
   for (const px of [-len * 0.38, len * 0.38]) for (const pz of [-wide * 0.38, wide * 0.38]) {
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.15, 1.25, 7), MAT.woodDark);
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.15, 1.25, 10), MAT.woodDark);
     post.position.set(px, -0.5, pz); post.castShadow = true; g.add(post);
   }
   scene.add(g);
